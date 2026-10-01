@@ -263,7 +263,7 @@ Copy `.env.example` to `.env` at the repository root. docker-compose maps these 
 |---|---|---|
 | `SECRET_KEY` | `JWT_SECRET` | auth, chat, memory, companion, analytics, customer, identity |
 | `INTERNAL_SERVICE_TOKEN` | same | auth, identity, customer, authorization. **Required**: without it signup, login and permission checks fail. |
-| `REQUIRE_VERIFIED_EMAIL` | same (default `true`) | auth-service: block login until the email is verified |
+| `REQUIRE_VERIFIED_EMAIL` | same (unset: required only when `NODE_ENV=production`) | auth-service: block login until the email is verified |
 | `JWT_REFRESH_SECRET` | `JWT_REFRESH_SECRET` | passed to auth-service, but unused |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `DATABASE_URL` | all NestJS services |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | same | ai-service |
@@ -302,6 +302,8 @@ docker compose up -d --build
 
 Several services default to port 3000, so give each one a different `PORT` when you run them side by side on the host.
 
+**Tests:** `npm test` at the repository root runs the Jest unit tests of auth, identity, customer and authorization (install each service's dependencies first).
+
 **Quality gates:** `npm install && npm run hooks:install` at the repository root. The pre-commit hook lints staged TypeScript files; pre-push runs `npm run quality` (ESLint plus `python -m compileall`). **No service has automated tests yet.**
 
 ---
@@ -312,7 +314,7 @@ Severity reflects what someone deploying the stack today would hit first.
 
 | # | Severity | Issue | Affected |
 |---|---|---|---|
-| 1 | 🔴 High | **No email or SMS delivery.** Verification codes can't reach users: issuing returns 503 in production, and with `REQUIRE_VERIFIED_EMAIL=true` (the default) **new users can't log in** until a provider exists. | identity, auth |
+| 1 | 🔴 High | **No email or SMS delivery** (planned: a separate notification and campaign application). In production, issuing a code returns 503 and **new users can't log in**, because verification is required there. Development skips the check by default. | identity, auth |
 | 2 | 🟠 Medium | **Coarse admin model.** authorization-service trusts any holder of `INTERNAL_SERVICE_TOKEN` and doesn't know which admin is acting. Permission checks aren't cached, and suspending or deleting an identity doesn't revoke tokens already issued. | authorization, identity, customer, auth |
 | 3 | 🟠 Medium | AI-extracted memories go to ChromaDB only, never to Postgres `memories`, so analytics and the memory UI don't see them. | ai, memory, analytics |
 | 4 | 🟠 Medium | Assistant replies aren't persisted, and `message_count`, `emotion` and `summary` are never updated. | chat, analytics |
@@ -321,7 +323,7 @@ Severity reflects what someone deploying the stack today would hit first.
 | 7 | 🟠 Medium | Shared database with cross-service table access (`users` is written by two services). | auth, companion, chat, analytics |
 | 8 | 🟡 Low | The refresh token is in a query string, there's one secret for both token types, there's no revocation, and the code falls back to a `changeme` secret. | auth (and all JWT verifiers) |
 | 9 | 🟡 Low | The `shared` package is unused and its types have drifted. | shared |
-| 10 | 🟡 Low | No automated tests, structured logging, metrics, tracing or correlation IDs anywhere. | all |
+| 10 | 🟡 Low | Unit tests only in auth, identity, customer and authorization (113, run with `npm test` at the root). No tests elsewhere, no CI, and no structured logging, metrics, tracing or correlation IDs anywhere. | all |
 | 11 | 🟡 Low | customer-service's outbox (`customer_events`) has no relay. | customer |
 | 12 | 🟡 Low | The repo already fails `npm run lint` (34 pre-existing ESLint errors, mostly `no-explicit-any`), so the pre-push hook can't pass. | all TypeScript services |
 

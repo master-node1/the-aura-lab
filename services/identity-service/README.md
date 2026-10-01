@@ -151,6 +151,8 @@ stateDiagram-v2
 - **Development and test:** the internal issue endpoint returns the code as `devCode`, so the flow can be exercised end to end.
 - **Production:** issuing a code returns **503** instead of pretending to send it. Public resend still answers 202 and logs a warning.
 
+**Planned:** codes will be delivered by a separate notification and campaign application. That integration only needs `VerificationNotifier` changed; nothing else in the flow does. Until then, development environments skip the email check at login (see [auth-service rule 9](../auth-service/README.md#33-business-rules)).
+
 To go live, implement `send()` with an email or SMS provider (or a notification service) and return `true` from `isConfigured()`.
 
 ---
@@ -383,16 +385,14 @@ npx prisma migrate deploy          # requires DATABASE_URL
 JWT_SECRET=dev INTERNAL_SERVICE_TOKEN=dev-internal npm run start:dev   # http://localhost:3001/api/identity/docs
 ```
 
-**Tests:** there's no automated test suite yet. The change that added JWT protection and verification was checked with smoke scripts against a real Postgres. They covered:
+**Tests:** `npm test` runs 45 Jest unit tests in `test/`, which are kept out of `src/` so production builds don't include them. They cover:
 
-- 401 without a JWT, and for refresh-type tokens or a wrong signature
-- internal endpoints rejecting a missing or wrong token
-- create, lookup and duplicate (409) cases
-- superseded, random and reused email tokens rejected
-- an OTP locked after 5 wrong attempts
-- the same resend response for unknown numbers
-- 503 and hidden Swagger in production
-- health returning 503 with Postgres stopped
+- **verification:** hashing, superseding old codes, `devCode` only outside production, the production 503, used, expired and deleted codes, a suspended identity staying suspended, OTP attempts counted before comparison, the lock after 5 attempts, and resend (generic response, cooldown)
+- **access control:** the owner bypass, the internal token being sent, a 400 treated as a denial, and fail-closed 503 on errors, timeouts or a missing token
+- **guards and the JWT strategy:** `x-user-id` overwritten, refresh tokens rejected
+- **health:** 503 on error and after the 2-second timeout
+
+The flows were also exercised end to end against a real Postgres, Redis and nginx.
 
 ---
 
@@ -400,9 +400,8 @@ JWT_SECRET=dev INTERNAL_SERVICE_TOKEN=dev-internal npm run start:dev   # http://
 
 - Every non-owner request costs one HTTP call plus an audit insert in authorization-service, with no caching.
 - Suspending or deleting an identity blocks new tokens, but tokens already issued stay valid until they expire.
-- **No email or SMS delivery yet**, so production verification returns 503 until a provider is wired in (see [§3.6](#36-verification-delivery)).
+- **No email or SMS delivery yet** (planned: a notification and campaign application). Production verification returns 503 until it's wired into `VerificationNotifier` (see [§3.6](#36-verification-delivery)).
 - There's no rate limiting on the public verification endpoints apart from the OTP attempt limit and the resend cooldown. Add gateway or IP throttling.
 - `changedBy` isn't set on audit rows (the `x-user-id` header is available for this).
 - Unique-constraint errors on link and update surface as 500 instead of 409.
 - No status-transition guards, for example reactivating a `DELETED` identity.
-- No automated tests yet (adding Jest needs a dev-dependency decision).

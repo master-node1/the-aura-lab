@@ -31,7 +31,9 @@ export class AuthService {
     private config: ConfigService,
     private identities: IdentityClient,
   ) {
-    this.requireVerifiedEmail = config.get<string>('REQUIRE_VERIFIED_EMAIL', 'true') !== 'false';
+    // Enforced in production; skipped elsewhere until a notification service can deliver codes.
+    const flag = config.get<string>('REQUIRE_VERIFIED_EMAIL');
+    this.requireVerifiedEmail = flag ? flag !== 'false' : config.get<string>('NODE_ENV') === 'production';
   }
 
   /**
@@ -130,8 +132,8 @@ export class AuthService {
   }
 
   /**
-   * Refuses suspended/deleted identities and, unless REQUIRE_VERIFIED_EMAIL=false,
-   * unverified email addresses. Users created before identities existed get one now.
+   * Refuses suspended/deleted identities and, when email verification is required
+   * (production by default), unverified email addresses. Users created before identities existed get one now.
    */
   private async assertIdentityMaySignIn(user: User): Promise<void> {
     let identity: IdentityRecord | null = await this.identities.findById(user.id);

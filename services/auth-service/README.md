@@ -111,7 +111,7 @@ The global `ValidationPipe({ whitelist: true, transform: true })` strips propert
 6. A refresh succeeds only for a valid token whose `type` is `refresh` and whose user still exists and is active. Those failures return `401 Invalid refresh token`. The identity checks in rules 8–9 apply to refresh too.
 7. Logout requires a valid access token but is otherwise client-side only. The endpoint returns a message and doesn't revoke anything.
 8. **Identity status.** Login and refresh are refused with `403 Account is not active` unless the identity's status is `PENDING_VERIFICATION`, `VERIFIED` or `ACTIVE` and it isn't soft-deleted. Suspending or deleting an identity therefore blocks new tokens. Tokens already issued stay valid until they expire (30 minutes by default).
-9. **Verified email.** Unless `REQUIRE_VERIFIED_EMAIL=false`, login and refresh are refused with `403 Email address is not verified` until the email is verified. **No email provider exists yet**, so in production users can't receive the code; see [identity-service §3.6](../identity-service/README.md#36-verification-delivery).
+9. **Verified email.** Login and refresh are refused with `403 Email address is not verified` until the email is verified, **in production only** by default. In every other environment the check is skipped, because nothing can deliver codes until the planned notification and campaign application exists. `REQUIRE_VERIFIED_EMAIL=true` or `false` overrides the default in either direction. See [identity-service §3.6](../identity-service/README.md#36-verification-delivery).
 10. **Signup order.** auth-service checks the email and username against `users` (409), creates the identity with a new UUID, creates the user with that same ID, then requests an email verification code. That last step is best-effort: if it fails, the user can ask for a new code through the identity resend endpoint.
 11. **Recovering a failed signup.** If an earlier registration created the identity but failed before creating the user, registering again with the same email **reuses** that identity instead of returning 409. That only happens when no user owns it and it isn't deleted.
 12. **Backfill.** A user created before this link existed gets an identity with the same ID on their next login (status `PENDING_VERIFICATION`, so rule 9 applies). If another identity already owns that email under a different ID, login returns `403 Account requires attention; contact support` and logs an error.
@@ -282,7 +282,7 @@ sequenceDiagram
 | `NODE_ENV` | no | – | `production` hides Swagger |
 | `IDENTITY_SERVICE_URL` | no | `http://identity-service:3001` | Base URL of identity-service's internal API |
 | `INTERNAL_SERVICE_TOKEN` | **yes** | – | Sent as `x-internal-token` to identity-service. If unset, register, login and refresh return 503. |
-| `REQUIRE_VERIFIED_EMAIL` | no | `true` | Set to `false` to allow login before the email is verified |
+| `REQUIRE_VERIFIED_EMAIL` | no | unset: `true` when `NODE_ENV=production`, otherwise `false` | Require a verified email to log in. `true`/`false` overrides the environment default. |
 | `JWT_REFRESH_SECRET` | – | – | Passed in by compose but **not read by the code** |
 | `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
@@ -301,7 +301,14 @@ npm run build && npm start       # production build
 
 With Docker: `docker compose up -d --build auth-service`.
 
-**Tests:** none exist yet. Lint runs from the repository root with `npm run lint`.
+**Tests:** `npm test` runs 36 Jest unit tests in `test/`, which are kept out of `src/` so production builds don't include them. They cover:
+
+- signup order and the shared ID, orphan recovery, and 409 and 503 cases
+- login: the password is checked first, every blocked identity status, the email-verification default per environment and its overrides, and backfill (including the conflict case)
+- refresh validation
+- the identity-service client: status mapping, fail-closed 503, and best-effort verification requests
+
+Lint runs from the repository root with `npm run lint`.
 
 ---
 
@@ -316,4 +323,4 @@ With Docker: `docker compose up -d --build auth-service`.
 - There are no unit, integration or e2e tests.
 - `users` and `identities` share IDs, but signup isn't atomic across the two services. A crash between the two writes leaves an orphan identity, which the next signup with that email reuses.
 - Suspending or deleting an identity doesn't revoke tokens already issued; they stay valid until expiry.
-- In production, `REQUIRE_VERIFIED_EMAIL=true` blocks every new user until an email provider exists.
+- In production, the email-verification requirement blocks every new user until an email provider exists. Development skips it by default.

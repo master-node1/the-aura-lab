@@ -4,7 +4,8 @@
   "scripts": {
     "lint": "eslint \"services/**/*.ts\"",
     "quality": "npm run lint && python3 -m compileall -q services/ai-service",
-    "hooks:install": "git config core.hooksPath .githooks"
+    "hooks:install": "git config core.hooksPath .githooks",
+    "test": "npm test --prefix services/auth-service && npm test --prefix services/identity-service && npm test --prefix services/customer-service && npm test --prefix services/authorization-service"
   },
   "devDependencies": {
     "eslint": "^9.0.0",

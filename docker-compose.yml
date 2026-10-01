@@ -82,8 +82,8 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too}
       IDENTITY_SERVICE_URL: http://identity-service:3001
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
-      # Set to "false" to let users log in before verifying their email.
-      REQUIRE_VERIFIED_EMAIL: ${REQUIRE_VERIFIED_EMAIL:-true}
+      # Unset: required when NODE_ENV=production, skipped otherwise. "true"/"false" overrides.
+      REQUIRE_VERIFIED_EMAIL: ${REQUIRE_VERIFIED_EMAIL:-}
     networks:
       - backend
     depends_on:

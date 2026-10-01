@@ -316,7 +316,13 @@ INTERNAL_SERVICE_TOKEN=dev-internal npm run start:dev   # http://localhost:3002/
 node dist/cli/assign-role.js <identityId>               # after npm run build
 ```
 
-**Tests:** none exist yet. `test.text` in this folder is a directory-tree dump, not a test.
+**Tests:** `npm test` runs 8 Jest unit tests in `test/`. They cover:
+
+- the global internal-token guard, with health public and fail-closed behavior when the token isn't configured
+- `checkAccess`: deny by default, exact matches, the `*/*` admin wildcard and per-resource wildcards, with audit rows written
+- protection of the seeded `admin` system role
+
+`test.text` in this folder is a directory-tree dump, not a test.
 
 ---
 
@@ -328,4 +334,4 @@ node dist/cli/assign-role.js <identityId>               # after npm run build
 - Nothing caches decisions. Every check is a 4-table join plus an audit insert, so it will need caching (for example in Redis) at scale.
 - `authorization_audit_logs` has no indexes and no retention policy.
 - `assignRoleToUser` doesn't check that the identity exists in identity-service.
-- There are no automated tests.
+- Only the decision logic and the guard have unit tests. CRUD services and policy evaluation don't.

@@ -82,7 +82,7 @@ curl http://localhost:8001/health
 docker compose exec authorization-service node dist/cli/assign-role.js <identityId>
 ```
 
-New users must verify their email before logging in. No email provider exists yet, so set `REQUIRE_VERIFIED_EMAIL=false` in `.env` until one does, or users won't be able to log in. See [identity-service §3.6](services/identity-service/README.md#36-verification-delivery).
+With `NODE_ENV=production`, new users must verify their email before logging in, and no email provider exists yet. For local development, set `NODE_ENV=development` in `.env`: the email check is skipped, verification codes are returned as `devCode` by the internal API, and Swagger is enabled. Override the check with `REQUIRE_VERIFIED_EMAIL=true` or `false`. See [identity-service §3.6](services/identity-service/README.md#36-verification-delivery).
 
 Swagger UI for each NestJS service is at `/api/<service>/docs` when `NODE_ENV` isn't `production` (compose defaults to `production`, so set `NODE_ENV=development` in `.env` to see it). The [service index](services/README.md#service-index) lists the ports and routes, and [known issues](services/README.md#cross-cutting-known-issues) lists the problems that currently affect startup.
 
@@ -98,4 +98,4 @@ npm run hooks:install
 The pre-commit hook checks whitespace and lints staged TypeScript files. The
 pre-push hook runs ESLint across the TypeScript services and checks Python
 syntax in `services/ai-service`. Run the full checks manually with
-`npm run quality`.
+`npm run quality`. Run the unit tests with `npm test` (each tested service needs `npm install` first).

@@ -368,12 +368,10 @@ npm run start:dev                 # http://localhost:3000/api/customer/docs
 
 The Docker image is multi-stage, runs as the non-root `node` user and prunes dev dependencies.
 
-**Tests:** there's no automated test suite yet. JWT protection was checked with a smoke script against a real Postgres. It covered:
+**Tests:** `npm test` runs 24 Jest unit tests in `test/`. They cover:
 
-- 401 on search, create and profile without a token, even with spoofed `x-identity-id` or `x-user-id` headers
-- `/profile` returning the caller's own record even when a different `x-user-id` is sent
-- 400 for a non-UUID `sub`
-- public health, and 503 with Postgres stopped
+- every endpoint's access rule: owner or `customer:<action>`, permission-only search and status changes, `/profile` using the JWT user ID, 404 before the permission check, and no service call after a denial
+- the access-control client, including fail-closed 503 and a 400 treated as a denial
 
 ---
 
