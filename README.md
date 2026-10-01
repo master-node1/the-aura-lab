@@ -1,6 +1,6 @@
 # The Aura Lab
 
-A microservices backend for **Sora**, an emotionally aware AI companion with real-time chat, long-term memory and selectable personalities, plus the first services (customer, identity, authorization) of an enterprise e-commerce platform.
+A microservices backend for **AuraLab**, an emotionally aware AI companion with real-time chat, long-term memory and selectable personalities, plus the first services (customer, identity, authorization) of an enterprise e-commerce platform.
 
 | | |
 |---|---|
