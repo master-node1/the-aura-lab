@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckAccessDto } from './dto/check-access.dto';
@@ -15,6 +16,20 @@ export interface PolicyRule {
   resource: string;
   action: string;
   conditions?: Record<string, unknown>;
+}
+
+function isPolicyRule(
+  value: Prisma.JsonValue,
+): value is Prisma.JsonObject & PolicyRule {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  return (
+    (value.effect === 'allow' || value.effect === 'deny') &&
+    typeof value.resource === 'string' &&
+    typeof value.action === 'string'
+  );
 }
 
 @Injectable()
@@ -107,7 +122,9 @@ export class AuthorizationService {
       };
     }
 
-    const rules = (policy.rules as PolicyRule[]) ?? [];
+    const rules = Array.isArray(policy.rules)
+      ? policy.rules.filter(isPolicyRule)
+      : [];
     const resource = String(context['resource'] ?? '');
     const action = String(context['action'] ?? '');
 

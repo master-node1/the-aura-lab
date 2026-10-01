@@ -4,6 +4,10 @@
 #   docker compose up -d --build
 name: the-aura-lab
 
+x-host-gateway: &host-gateway-settings
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -62,6 +66,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   auth-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/auth-service
       dockerfile: Dockerfile
@@ -70,7 +75,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -92,6 +97,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   identity-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/identity-service
       dockerfile: Dockerfile
@@ -100,7 +106,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3001"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -121,6 +127,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   authorization-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/authorization-service
       dockerfile: Dockerfile
@@ -129,7 +136,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3002"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -150,6 +157,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   chat-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/chat-service
       dockerfile: Dockerfile
@@ -158,7 +166,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -180,6 +188,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   memory-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/memory-service
       dockerfile: Dockerfile
@@ -188,7 +197,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -210,6 +219,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   companion-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/companion-service
       dockerfile: Dockerfile
@@ -218,7 +228,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -239,6 +249,7 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   analytics-service:
+    <<: *host-gateway-settings
     build:
       context: ./services/analytics-service
       dockerfile: Dockerfile
@@ -247,7 +258,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -267,34 +278,35 @@ services:
       driver: json-file
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
-  # customer-service:
-  #   build:
-  #     context: ./services/customer-service
-  #     dockerfile: Dockerfile
-  #   container_name: the-aura-lab-customer-service
-  #   restart: unless-stopped
-  #   environment:
-  #     NODE_ENV: ${NODE_ENV:-production}
-  #     PORT: "3000"
-  #     DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
-  #     JWT_SECRET: ${SECRET_KEY:-change-me}
-  #     REDIS_URL: redis://redis:6379
-  #     CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-  #   networks:
-  #     - backend
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     auth-service: { condition: service_healthy }
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/customer/health || exit 1"]
-  #     interval: 20s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 30s
-  #   logging:
-  #     driver: json-file
-  #     options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+  customer-service:
+    <<: *host-gateway-settings
+    build:
+      context: ./services/customer-service
+      dockerfile: Dockerfile
+    container_name: the-aura-lab-customer-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/customer/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   # ai-service: Python FastAPI worker; subscribes to Redis pub/sub channel
   # the-aura-lab:ai:process and publishes to the-aura-lab:ai:response.
@@ -344,7 +356,7 @@ services:
       analytics-service:     { condition: service_healthy }
       authorization-service: { condition: service_healthy }
       identity-service:      { condition: service_healthy }
-      # customer-service:      { condition: service_healthy }
+      customer-service:      { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
       interval: 30s

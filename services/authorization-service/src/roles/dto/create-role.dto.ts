@@ -5,7 +5,7 @@ export class CreateRoleDto {
   @ApiProperty({ example: 'catalog_manager' })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiPropertyOptional({ example: 'Manages product catalog' })
   @IsOptional()

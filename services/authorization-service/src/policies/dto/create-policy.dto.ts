@@ -11,7 +11,7 @@ export class CreatePolicyDto {
   @ApiProperty({ example: 'admin-full-access' })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiPropertyOptional({ example: 'Grants full access to all resources for admins' })
   @IsOptional()

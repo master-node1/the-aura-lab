@@ -5,17 +5,17 @@ export class CreatePermissionDto {
   @ApiProperty({ example: 'product.create' })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiProperty({ example: 'product' })
   @IsString()
   @IsNotEmpty()
-  resource: string;
+  resource!: string;
 
   @ApiProperty({ example: 'create' })
   @IsString()
   @IsNotEmpty()
-  action: string;
+  action!: string;
 
   @ApiPropertyOptional({ example: 'Allows creating new products' })
   @IsOptional()

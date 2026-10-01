@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   IsString,
   IsNotEmpty,
@@ -10,7 +11,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class CheckAccessDto {
   @ApiProperty({ description: 'The identity ID requesting access' })
   @IsUUID()
-  identityId: string;
+  identityId!: string;
 
   @ApiProperty({
     description: 'The resource being accessed',
@@ -18,7 +19,7 @@ export class CheckAccessDto {
   })
   @IsString()
   @IsNotEmpty()
-  resource: string;
+  resource!: string;
 
   @ApiProperty({
     description: 'The action being attempted',
@@ -26,7 +27,7 @@ export class CheckAccessDto {
   })
   @IsString()
   @IsNotEmpty()
-  action: string;
+  action!: string;
 
   @ApiPropertyOptional({
     description: 'Additional context for ABAC evaluation',
@@ -35,5 +36,5 @@ export class CheckAccessDto {
   })
   @IsOptional()
   @IsObject()
-  context?: Record<string, unknown>;
+  context?: Prisma.InputJsonObject;
 }

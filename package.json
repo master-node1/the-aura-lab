@@ -1,0 +1,13 @@
+{
+  "name": "the-aura-lab-quality",
+  "private": true,
+  "scripts": {
+    "lint": "eslint \"services/**/*.ts\"",
+    "quality": "npm run lint && python3 -m compileall -q services/ai-service",
+    "hooks:install": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
