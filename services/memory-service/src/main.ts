@@ -10,7 +10,7 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
   const config = new DocumentBuilder()
-    .setTitle('SoulSync — Memory Service')
+    .setTitle('TheAuraLab — Memory Service')
     .setDescription('Long-term memory (Postgres), short-term memory (Redis), and semantic search (ChromaDB).')
     .setVersion('1.0')
     .addBearerAuth()

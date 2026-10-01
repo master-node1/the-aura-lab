@@ -1,7 +1,7 @@
-# SoulSync Microservices Architecture
+# TheAuraLab Microservices Architecture
 
 ## Overview
-The SoulSync backend has been split into 6 microservices:
+The TheAuraLab backend has been split into 6 microservices:
 
 ```
 services/
@@ -25,9 +25,9 @@ services/
 ## Inter-Service Communication
 
 ### Redis Pub/Sub Channels
-- `soulsync:ai:process` - Chat → AI (process message)
-- `soulsync:ai:response` - AI → Chat (send response)
-- `soulsync:memory:save` - AI → Memory (save extracted memory)
+- `TheAuraLab:ai:process` - Chat → AI (process message)
+- `TheAuraLab:ai:response` - AI → Chat (send response)
+- `TheAuraLab:memory:save` - AI → Memory (save extracted memory)
 
 ### HTTP Calls
 - AI Service → Memory Service (semantic search, save memories)

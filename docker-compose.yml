@@ -1,24 +1,24 @@
-# SoulSync Ecommerce - microservices orchestration.
+# the-aura-lab Ecommerce - microservices orchestration.
 # Usage:
 #   cp .env.example .env
 #   docker compose up -d --build
-name: soulsync
+name: the-aura-lab
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: soulsync-postgres
+    container_name: the-aura-lab-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-soulsync}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soulsync_dev_pw}
-      POSTGRES_DB: ${POSTGRES_DB:-soulsync}
+      POSTGRES_USER: ${POSTGRES_USER:-theauralab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-theauralab_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-theauralab}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes: [postgres-data:/var/lib/postgresql/data]
     networks: [backend]
     ports: ["${POSTGRES_PORT:-5432}:5432"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-soulsync} -d ${POSTGRES_DB:-soulsync}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-theauralab} -d ${POSTGRES_DB:-theauralab}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -29,7 +29,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: soulsync-redis
+    container_name: the-aura-lab-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
     volumes: [redis-data:/data]
@@ -42,7 +42,7 @@ services:
 
   chromadb:
     image: chromadb/chroma:0.4.22
-    container_name: soulsync-chromadb
+    container_name: the-aura-lab-chromadb
     restart: unless-stopped
     environment:
       IS_PERSISTENT: "TRUE"
@@ -65,12 +65,12 @@ services:
     build:
       context: ./services/auth-service
       dockerfile: Dockerfile
-    container_name: soulsync-auth-service
+    container_name: the-aura-lab-auth-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -95,12 +95,12 @@ services:
     build:
       context: ./services/identity-service
       dockerfile: Dockerfile
-    container_name: soulsync-identity-service
+    container_name: the-aura-lab-identity-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3001"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -124,12 +124,12 @@ services:
     build:
       context: ./services/authorization-service
       dockerfile: Dockerfile
-    container_name: soulsync-authorization-service
+    container_name: the-aura-lab-authorization-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3002"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -153,12 +153,12 @@ services:
     build:
       context: ./services/chat-service
       dockerfile: Dockerfile
-    container_name: soulsync-chat-service
+    container_name: the-aura-lab-chat-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -183,12 +183,12 @@ services:
     build:
       context: ./services/memory-service
       dockerfile: Dockerfile
-    container_name: soulsync-memory-service
+    container_name: the-aura-lab-memory-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -213,12 +213,12 @@ services:
     build:
       context: ./services/companion-service
       dockerfile: Dockerfile
-    container_name: soulsync-companion-service
+    container_name: the-aura-lab-companion-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -242,12 +242,12 @@ services:
     build:
       context: ./services/analytics-service
       dockerfile: Dockerfile
-    container_name: soulsync-analytics-service
+    container_name: the-aura-lab-analytics-service
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
@@ -267,42 +267,42 @@ services:
       driver: json-file
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
-  customer-service:
-    build:
-      context: ./services/customer-service
-      dockerfile: Dockerfile
-    container_name: soulsync-customer-service
-    restart: unless-stopped
-    environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      PORT: "3000"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
-      JWT_SECRET: ${SECRET_KEY:-change-me}
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    networks:
-      - backend
-    depends_on:
-      postgres:
-        condition: service_healthy
-      auth-service: { condition: service_healthy }
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/customer/health || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: json-file
-      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+  # customer-service:
+  #   build:
+  #     context: ./services/customer-service
+  #     dockerfile: Dockerfile
+  #   container_name: the-aura-lab-customer-service
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV:-production}
+  #     PORT: "3000"
+  #     DATABASE_URL: postgresql://${POSTGRES_USER:-the-aura-lab}:${POSTGRES_PASSWORD:-the-aura-lab_dev_pw}@postgres:5432/${POSTGRES_DB:-the-aura-lab}
+  #     JWT_SECRET: ${SECRET_KEY:-change-me}
+  #     REDIS_URL: redis://redis:6379
+  #     CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  #   networks:
+  #     - backend
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     auth-service: { condition: service_healthy }
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/customer/health || exit 1"]
+  #     interval: 20s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 30s
+  #   logging:
+  #     driver: json-file
+  #     options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
   # ai-service: Python FastAPI worker; subscribes to Redis pub/sub channel
-  # soulsync:ai:process and publishes to soulsync:ai:response.
+  # the-aura-lab:ai:process and publishes to the-aura-lab:ai:response.
   ai-service:
     build:
       context: ./services/ai-service
       dockerfile: Dockerfile
-    container_name: soulsync-ai
+    container_name: the-aura-lab-ai
     restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -332,7 +332,7 @@ services:
 
   api-gateway:
     build: {context: ./services/api-gateway, dockerfile: Dockerfile}
-    container_name: soulsync-gateway
+    container_name: the-aura-lab-gateway
     restart: unless-stopped
     networks: [backend, edge]
     ports: ["${API_GATEWAY_PORT:-8001}:8001"]
@@ -344,7 +344,7 @@ services:
       analytics-service:     { condition: service_healthy }
       authorization-service: { condition: service_healthy }
       identity-service:      { condition: service_healthy }
-      customer-service:      { condition: service_healthy }
+      # customer-service:      { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
       interval: 30s
@@ -356,10 +356,10 @@ services:
       options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
 
 networks:
-  backend: {driver: bridge, name: soulsync-backend}
-  edge:    {driver: bridge, name: soulsync-edge}
+  backend: {driver: bridge, name: the-aura-lab-backend}
+  edge:    {driver: bridge, name: the-aura-lab-edge}
 
 volumes:
-  postgres-data: {name: soulsync-postgres-data}
-  redis-data:    {name: soulsync-redis-data}
-  chroma-data:   {name: soulsync-chroma-data}
+  postgres-data: {name: the-aura-lab-postgres-data}
+  redis-data:    {name: the-aura-lab-redis-data}
+  chroma-data:   {name: the-aura-lab-chroma-data}

@@ -10,7 +10,7 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
   const config = new DocumentBuilder()
-    .setTitle('SoulSync — Analytics Service')
+    .setTitle('TheAuraLab — Analytics Service')
     .setDescription('Read-only dashboard stats: emotion trends, conversation metrics, memory statistics.')
     .setVersion('1.0')
     .addBearerAuth()

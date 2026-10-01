@@ -1,5 +1,5 @@
 {
-  "name": "@soulsync/auth-service",
+  "name": "@TheAuraLab/auth-service",
   "version": "1.0.0",
   "scripts": {
     "build": "nest build",

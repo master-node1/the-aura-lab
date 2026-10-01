@@ -1,7 +1,7 @@
 {
-  "name": "@soulsync/shared",
+  "name": "@TheAuraLab/shared",
   "version": "1.0.0",
-  "description": "Shared TypeScript types and constants across SoulSync microservices",
+  "description": "Shared TypeScript types and constants across TheAuraLab microservices",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

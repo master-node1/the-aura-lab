@@ -13,7 +13,7 @@ async function bootstrap() {
   });
 
   const config = new DocumentBuilder()
-    .setTitle('SoulSync — Chat Service')
+    .setTitle('TheAuraLab — Chat Service')
     .setDescription('Manages conversations, messages, and the Socket.IO real-time WebSocket gateway.')
     .setVersion('1.0')
     .addBearerAuth()

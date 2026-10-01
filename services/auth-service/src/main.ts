@@ -10,7 +10,7 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
   const config = new DocumentBuilder()
-    .setTitle('SoulSync — Auth Service')
+    .setTitle('TheAuraLab — Auth Service')
     .setDescription('Handles user registration, login, JWT tokens, and profile retrieval.')
     .setVersion('1.0')
     .addBearerAuth()

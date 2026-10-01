@@ -10,7 +10,7 @@ async function bootstrap() {
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
   const config = new DocumentBuilder()
-    .setTitle('SoulSync — Companion Service')
+    .setTitle('TheAuraLab — Companion Service')
     .setDescription('Manages AI companion personality archetypes, avatar configuration, and communication style.')
     .setVersion('1.0')
     .addBearerAuth()

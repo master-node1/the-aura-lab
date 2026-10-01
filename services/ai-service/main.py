@@ -1,7 +1,7 @@
 """
 AI Service — Redis consumer worker + optional HTTP health endpoint.
-Subscribes to soulsync:ai:process, runs the agent pipeline,
-publishes response to soulsync:ai:response.
+Subscribes to TheAuraLab:ai:process, runs the agent pipeline,
+publishes response to TheAuraLab:ai:response.
 """
 import asyncio
 import json
@@ -20,8 +20,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-AI_PROCESS_CHANNEL = "soulsync:ai:process"
-AI_RESPONSE_CHANNEL = "soulsync:ai:response"
+AI_PROCESS_CHANNEL = "TheAuraLab:ai:process"
+AI_RESPONSE_CHANNEL = "TheAuraLab:ai:response"
 
 
 async def redis_worker():
@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(title="SoulSync AI Service", lifespan=lifespan)
+app = FastAPI(title="TheAuraLab AI Service", lifespan=lifespan)
 
 
 @app.get("/health")

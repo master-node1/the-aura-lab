@@ -1,4 +1,4 @@
-# SoulSync Microservices — Deployment Guide
+# TheAuraLab Microservices — Deployment Guide
 
 ## ✅ Migration Status
 
@@ -77,9 +77,9 @@ Frontend (Next.js :3000)
 nginx API Gateway (:8001)
     ├─→ auth-service (:3000)       — JWT, register, login
     ├─→ chat-service (:3000)       — WebSocket (Socket.IO), conversations
-    │     ↓ Redis pub (soulsync:ai:process)
+    │     ↓ Redis pub (TheAuraLab:ai:process)
     │   ai-service (:3000)         — Python agents, LLM, ChromaDB
-    │     ↓ Redis pub (soulsync:ai:response)
+    │     ↓ Redis pub (TheAuraLab:ai:response)
     │   chat-service → Socket.IO → Frontend
     ├─→ memory-service (:3000)     — Memory CRUD, Redis short-term
     ├─→ companion-service (:3000)  — Personality, avatar config
@@ -89,10 +89,10 @@ nginx API Gateway (:8001)
 **Data Flow Example (User sends message):**
 1. Frontend WebSocket → nginx :8001 → chat-service :3000
 2. Chat-service persists message to Postgres (`conversations`, `messages`)
-3. Chat-service publishes `{userId, content, conversationId}` to Redis channel `soulsync:ai:process`
+3. Chat-service publishes `{userId, content, conversationId}` to Redis channel `TheAuraLab:ai:process`
 4. AI-service (Python worker) consumes from Redis
 5. AI-service runs agent pipeline: emotion detection, memory retrieval (ChromaDB), LLM generation
-6. AI-service publishes response to Redis channel `soulsync:ai:response`
+6. AI-service publishes response to Redis channel `TheAuraLab:ai:response`
 7. Chat-service subscribes to response channel, emits via Socket.IO to frontend
 
 ---
@@ -125,8 +125,8 @@ nginx API Gateway (:8001)
 - Test Socket.IO directly (bypassing nginx): http://localhost:3000/socket.io/
 
 **AI service not responding**
-- Check Redis pub/sub: `docker exec -it soulsync-redis redis-cli PUBSUB CHANNELS`
-- Should see `soulsync:ai:process` and `soulsync:ai:response`
+- Check Redis pub/sub: `docker exec -it TheAuraLab-redis redis-cli PUBSUB CHANNELS`
+- Should see `TheAuraLab:ai:process` and `TheAuraLab:ai:response`
 - Check AI service logs: `docker-compose logs -f ai-service`
 
 **Login returns 500**

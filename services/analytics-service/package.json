@@ -1,5 +1,5 @@
 {
-  "name": "@soulsync/analytics-service",
+  "name": "@TheAuraLab/analytics-service",
   "version": "1.0.0",
   "scripts": {
     "build": "nest build",

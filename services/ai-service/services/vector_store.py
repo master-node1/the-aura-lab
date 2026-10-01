@@ -10,7 +10,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-COLLECTION_NAME = "soulsync_memories"
+COLLECTION_NAME = "TheAuraLab_memories"
 
 
 class VectorStoreService:

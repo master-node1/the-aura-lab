@@ -1,5 +1,5 @@
 {
-  "name": "@soulsync/chat-service",
+  "name": "@TheAuraLab/chat-service",
   "version": "1.0.0",
   "scripts": {
     "build": "nest build",
