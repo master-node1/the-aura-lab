@@ -1,0 +1,303 @@
+# authorization-service
+
+> Role-based access control (RBAC): roles, permissions, role assignments, access decisions with an audit log, and a policy store for future attribute-based access control (ABAC).
+> [← Service index](../README.md) · Business spec: [docs/modules/authorization.md](../../docs/modules/authorization.md)
+
+| | |
+|---|---|
+| **Stack** | NestJS 10, Prisma 6, PostgreSQL |
+| **Port** | `3002` |
+| **Route prefix** | `/api/authorization` |
+| **Gateway route** | **None.** nginx doesn't route to this service; reach it on the `backend` network or at `localhost:3002` |
+| **Swagger** | `/api/authorization/docs` |
+| **Owns tables** | `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` |
+| **Depends on** | PostgreSQL |
+| **Used by** | Nothing calls it yet. It's designed as a policy decision point for other services. |
+
+---
+
+## 1. Responsibilities
+
+- CRUD for **roles**. System roles (`isSystem = true`) can't be changed or deleted.
+- CRUD for **permissions**, each a `resource` + `action` pair, for example `product` + `create`.
+- Grant and revoke permissions on roles.
+- Assign and revoke roles for identities.
+- **Access decisions** (`POST /authorize`): deny by default, `*` matches any resource or action, and every decision is audited.
+- List the effective permissions of an identity.
+- CRUD for **policies**: JSON rule sets with a version that goes up on every update.
+
+---
+
+## 2. High-Level Design
+
+```mermaid
+flowchart LR
+    SVC[Calling service<br/>policy enforcement point] -->|POST /authorize| AZ[authorization-service]
+    ADMIN[Admin tooling] -->|roles / permissions / policies CRUD| AZ
+    AZ -->|Prisma| PG[(PostgreSQL)]
+    subgraph PG_T[Tables]
+      R[roles] --- RP[role_permissions] --- P[permissions]
+      R --- UR[user_roles]
+      POL[policies]
+      AL[authorization_audit_logs]
+    end
+    PG --- PG_T
+```
+
+The **decision model** is plain RBAC: identity → roles → permissions → match. `AuthorizationService.evaluatePolicy()` implements a first-match ABAC evaluator over `policies.rules`, but **no endpoint calls it** yet.
+
+---
+
+## 3. Low-Level Design
+
+```text
+src/
+├── main.ts                    # prefix api/authorization, ValidationPipe, CORS, Swagger, port 3002
+├── app.module.ts              # Config, Prisma, Roles, Permissions, Policies, Authorization modules
+├── prisma/                    # global PrismaService
+├── roles/                     # RolesController (+ /health), RolesService, DTOs
+├── permissions/               # PermissionsController, PermissionsService, DTOs
+├── policies/                  # PoliciesController, PoliciesService, DTOs
+└── authorization/             # AuthorizationController, AuthorizationService, CheckAccessDto
+```
+
+### 3.1 Services
+
+| Service | Key methods and rules |
+|---|---|
+| `RolesService` | `createRole` (name must be unique, else 409); `findAll` and `findById` (include `rolePermissions.permission`); `updateRole` and `deleteRole` (400 for a system role, 409 for a duplicate name); `assignPermission` (404 if the role or permission is missing, 409 if already granted); `revokePermission`; `assignRoleToUser` (409 if already assigned); `revokeRoleFromUser`; `getUserRoles` (not exposed over HTTP). |
+| `PermissionsService` | `create` (both `name` and `(resource, action)` must be unique, else 409); `findAll`, sorted by resource then action; `findById`; `update` (re-checks both uniqueness rules, excluding itself); `remove` (cascades to `role_permissions`). |
+| `PoliciesService` | `create` (name must be unique; `rules` defaults to `[]`, `isActive` to `true`); `findAll`, sorted by `createdAt`; `findById`; `update` (**increments `version`** on every update); `remove`. |
+| `AuthorizationService` | `checkAccess(dto)`, `getUserPermissions(identityId)` (deduplicated by permission ID), `evaluatePolicy(policyId, context)` (internal only). |
+
+### 3.2 Access-decision algorithm (`checkAccess`)
+
+```mermaid
+flowchart TD
+    A[POST /authorize<br/>identityId, resource, action, context] --> B[Load user_roles → role → role_permissions → permission]
+    B --> C{any roles?}
+    C -- no --> D[DENIED: Identity has no roles assigned]
+    C -- yes --> E{some permission where<br/>resource matches or is *<br/>AND action matches or is *}
+    E -- yes --> F[GRANTED: Permission X via role Y]
+    E -- no --> G[DENIED: No matching permission]
+    D & F & G --> H[INSERT authorization_audit_logs<br/>decision, reason, context]
+    H --> I[200 allowed, reason, identityId, resource, action]
+```
+
+- The **first match wins**, and permissions are evaluated as one flat set. There are no deny permissions in RBAC.
+- `context` is stored in the audit log but **doesn't affect the decision**.
+
+### 3.3 Policy evaluation (`evaluatePolicy`, internal)
+
+- An inactive policy returns `{ matched: false, effect: 'deny' }`.
+- `rules` is filtered to valid `{ effect: 'allow' | 'deny', resource, action, conditions? }` objects.
+- Rules are evaluated in order, and the first rule whose resource and action match (`*` allowed) returns its `effect`.
+- If no rule matches, the result is deny. `conditions` are **not evaluated** yet.
+
+### 3.4 DTO validation
+
+| DTO | Fields |
+|---|---|
+| `CreateRoleDto` | `name` (non-empty string), `description?` |
+| `UpdateRoleDto` | Partial of the above |
+| `AssignRoleDto` | `identityId` (UUID), `assignedBy?` (string) |
+| `CreatePermissionDto` | `name`, `resource`, `action` (non-empty strings), `description?` |
+| `UpdatePermissionDto` | Partial of the above |
+| `CreatePolicyDto` | `name` (non-empty), `description?`, `rules?` (array), `isActive?` (boolean) |
+| `UpdatePolicyDto` | Partial of the above |
+| `CheckAccessDto` | `identityId` (UUID), `resource`, `action` (non-empty), `context?` (object) |
+
+---
+
+## 4. API
+
+All paths are relative to `/api/authorization`. **No endpoint is authenticated.**
+
+### Health
+
+| Method | Path | Response |
+|---|---|---|
+| GET | `/health` | `{ status: 'ok', service: 'authorization-service' }` |
+
+### Roles
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/roles` | `CreateRoleDto` | 201 role | 400, 409 |
+| GET | `/roles` | – | 200 roles with permissions | – |
+| GET | `/roles/:roleId` | – | 200 role | 404 |
+| PUT | `/roles/:roleId` | `UpdateRoleDto` | 200 role | 400 (system role), 404, 409 |
+| DELETE | `/roles/:roleId` | – | 200 `{message}` | 400 (system role), 404 |
+| POST | `/roles/:roleId/permissions/:permissionId` | – | 201 role_permission | 404, 409 |
+| DELETE | `/roles/:roleId/permissions/:permissionId` | – | 200 `{message}` | 404 |
+| POST | `/roles/:roleId/assign` | `AssignRoleDto` | 201 user_role | 404, 409 |
+| DELETE | `/roles/:roleId/users/:identityId` | – | 200 `{message}` | 404 |
+
+### Permissions
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/permissions` | `CreatePermissionDto` | 201 | 400, 409 |
+| GET | `/permissions` | – | 200 list | – |
+| GET | `/permissions/:permissionId` | – | 200 | 404 |
+| PUT | `/permissions/:permissionId` | `UpdatePermissionDto` | 200 | 404, 409 |
+| DELETE | `/permissions/:permissionId` | – | 200 `{message}` | 404 |
+
+### Policies
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/policies` | `CreatePolicyDto` | 201 | 400, 409 |
+| GET | `/policies` | – | 200 list | – |
+| GET | `/policies/:policyId` | – | 200 | 404 |
+| PUT | `/policies/:policyId` | `UpdatePolicyDto` | 200 (version + 1) | 404, 409 |
+| DELETE | `/policies/:policyId` | – | 200 `{message}` | 404 |
+
+### Decisions
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | `/authorize` | `CheckAccessDto` | 200 `{ allowed, reason, identityId, resource, action }` |
+| POST | `/check-access` | `CheckAccessDto` | Alias of `/authorize` |
+| GET | `/users/:identityId/permissions` | – | 200 `{ identityId, roles[], permissions[] }` |
+
+```http
+POST /api/authorization/authorize
+Content-Type: application/json
+
+{ "identityId": "550e8400-e29b-41d4-a716-446655440000", "resource": "product", "action": "create", "context": { "region": "us-east" } }
+```
+
+```json
+{ "allowed": true, "reason": "GRANTED: Permission \"product.create\" via role \"catalog_manager\"",
+  "identityId": "550e8400-e29b-41d4-a716-446655440000", "resource": "product", "action": "create" }
+```
+
+---
+
+## 5. Data model
+
+```mermaid
+erDiagram
+    roles ||--o{ role_permissions : "role_id (FK, cascade)"
+    permissions ||--o{ role_permissions : "permission_id (FK, cascade)"
+    roles ||--o{ user_roles : "role_id (FK, cascade)"
+    identities ||--o{ user_roles : "identity_id (logical, identity-service)"
+    roles {
+        uuid id PK
+        text name UK
+        text description
+        bool is_system
+        timestamp created_at
+        timestamp updated_at
+    }
+    permissions {
+        uuid id PK
+        text name UK
+        text resource
+        text action
+        text description
+        timestamp created_at
+    }
+    role_permissions {
+        uuid role_id PK,FK
+        uuid permission_id PK,FK
+    }
+    user_roles {
+        uuid identity_id PK
+        uuid role_id PK,FK
+        timestamp assigned_at
+        text assigned_by
+    }
+    policies {
+        uuid id PK
+        text name UK
+        text description
+        int version
+        jsonb rules
+        bool is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    authorization_audit_logs {
+        uuid id PK
+        text identity_id
+        text resource
+        text action
+        text decision
+        text reason
+        jsonb context
+        timestamp created_at
+    }
+```
+
+| Table | Keys and constraints | Notes |
+|---|---|---|
+| `roles` | PK `id`, UNIQUE `name` | `is_system` defaults to `false`; nothing sets it to `true` yet |
+| `permissions` | PK `id`, UNIQUE `name`, UNIQUE `(resource, action)` | `*` acts as a wildcard during checks |
+| `role_permissions` | PK `(role_id, permission_id)`, FKs with `ON DELETE CASCADE` | Join table |
+| `user_roles` | PK `(identity_id, role_id)`, FK `role_id` with cascade | `identity_id` has no FK, because identities live in identity-service |
+| `policies` | PK `id`, UNIQUE `name` | `version` defaults to 1, `rules` to `[]`, `is_active` to `true` |
+| `authorization_audit_logs` | PK `id` | `decision` ∈ `GRANTED \| DENIED`; append-only, with no index on `identity_id` or `created_at` |
+
+> ⚠️ **No migrations directory.** `npx prisma migrate deploy` on container start creates nothing. Generate and commit an initial migration with `npx prisma migrate dev --name init`. The Dockerfile also doesn't copy `.npmrc`, unlike the other NestJS services.
+
+---
+
+## 6. Flows
+
+### Bootstrapping RBAC and checking access
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant AZ as authorization-service
+    participant DB as Postgres
+    Admin->>AZ: POST /permissions {name: product.create, resource: product, action: create}
+    Admin->>AZ: POST /roles {name: catalog_manager}
+    Admin->>AZ: POST /roles/:roleId/permissions/:permissionId
+    Admin->>AZ: POST /roles/:roleId/assign {identityId}
+    Note over AZ,DB: later, from a service enforcing access
+    participant SVC as Calling service
+    SVC->>AZ: POST /authorize {identityId, resource: product, action: create}
+    AZ->>DB: SELECT user_roles JOIN roles JOIN role_permissions JOIN permissions
+    AZ->>DB: INSERT authorization_audit_logs (GRANTED)
+    AZ-->>SVC: {allowed: true, reason}
+```
+
+---
+
+## 7. Configuration
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `PORT` | no | `3002` | HTTP port |
+| `DATABASE_URL` | yes | – | Postgres connection string |
+| `CORS_ORIGINS` | no | `http://localhost:3000` | Comma-separated list of allowed origins |
+| `JWT_SECRET`, `REDIS_URL` | – | – | Passed in by compose but **not used** |
+
+---
+
+## 8. Run, build and test
+
+```bash
+cd services/authorization-service
+npm install
+npx prisma generate
+npx prisma db push            # until a migration is committed
+npm run start:dev             # http://localhost:3002/api/authorization/docs
+```
+
+**Tests:** none exist yet. `test.text` in this folder is a directory-tree dump, not a test.
+
+---
+
+## 9. Known limitations and follow-ups
+
+- **The admin API is unauthenticated.** Anyone who can reach the service can grant themselves any role. Add JWT auth plus a self-check, for example requiring `authorization.manage`.
+- There's no gateway route, and no other service calls `/authorize` yet.
+- `evaluatePolicy` isn't exposed, and `conditions` and `context` are ignored, so ABAC isn't functional.
+- Nothing caches decisions. Every check is a 4-table join plus an audit insert, so it will need caching (for example in Redis) at scale.
+- `authorization_audit_logs` has no indexes and no retention policy.
+- `assignRoleToUser` doesn't check that the identity exists in identity-service.
+- There are no migrations and no tests.
