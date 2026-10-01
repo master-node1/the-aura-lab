@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccessControlService } from '../auth/access-control.service';
 import { InternalServiceGuard } from '../auth/internal-service.guard';
 import { IdentityController } from './identity.controller';
 import { IdentityService } from './identity.service';
@@ -9,7 +10,13 @@ import { VerificationService } from './verification.service';
 
 @Module({
   controllers: [VerificationController, InternalIdentityController, IdentityController],
-  providers: [IdentityService, VerificationService, VerificationNotifier, InternalServiceGuard],
+  providers: [
+    IdentityService,
+    VerificationService,
+    VerificationNotifier,
+    InternalServiceGuard,
+    AccessControlService,
+  ],
   exports: [IdentityService],
 })
 export class IdentityModule {}

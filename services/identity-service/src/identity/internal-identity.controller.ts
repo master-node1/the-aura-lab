@@ -16,7 +16,7 @@ import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiSecurity, ApiTags } f
 import { isEmail } from 'class-validator';
 import { InternalServiceGuard } from '../auth/internal-service.guard';
 import { Public } from '../auth/public.decorator';
-import { CreateIdentityDto } from './dto/create-identity.dto';
+import { InternalCreateIdentityDto } from './dto/internal-create-identity.dto';
 import { IssueVerificationDto } from './dto/issue-verification.dto';
 import { IdentityService } from './identity.service';
 import { VerificationService } from './verification.service';
@@ -41,8 +41,8 @@ export class InternalIdentityController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create an identity during signup' })
   @ApiResponse({ status: 201, description: 'Identity created (PENDING_VERIFICATION)' })
-  @ApiResponse({ status: 409, description: 'Email or mobile number already registered' })
-  create(@Body() dto: CreateIdentityDto) {
+  @ApiResponse({ status: 409, description: 'Email, mobile number or ID already registered' })
+  create(@Body() dto: InternalCreateIdentityDto) {
     return this.identityService.createIdentity(dto);
   }
 

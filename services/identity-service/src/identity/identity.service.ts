@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateIdentityDto } from './dto/create-identity.dto';
+import { InternalCreateIdentityDto } from './dto/internal-create-identity.dto';
 import { UpdateIdentityDto } from './dto/update-identity.dto';
 import { LinkProviderDto } from './dto/link-provider.dto';
 import { IdentityStatus } from '@prisma/client';
@@ -16,7 +16,11 @@ export class IdentityService {
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────
 
-  async createIdentity(dto: CreateIdentityDto) {
+  async createIdentity(dto: InternalCreateIdentityDto) {
+    if (dto.id && (await this.prisma.identity.findUnique({ where: { id: dto.id } }))) {
+      throw new ConflictException('Identity ID already exists');
+    }
+
     const existingEmail = await this.prisma.identity.findUnique({
       where: { email: dto.email },
     });
@@ -35,6 +39,7 @@ export class IdentityService {
 
     const identity = await this.prisma.identity.create({
       data: {
+        ...(dto.id && { id: dto.id }),
         email: dto.email,
         displayName: dto.displayName,
         firstName: dto.firstName,

@@ -12,7 +12,7 @@
 | **Swagger** | `/api/identity/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `identities`, `identity_providers`, `identity_audit_logs`, `identity_verifications` |
 | **Depends on** | PostgreSQL |
-| **Used by** | Internal callers (signup and login flows) through `/internal/*`. Its IDs are referenced as `identity_id` by [authorization-service](../authorization-service/README.md) and [customer-service](../customer-service/README.md). |
+| **Used by** | auth-service (signup, login, refresh) through `/internal/*`. Calls authorization-service for permission checks. Its IDs are referenced as `identity_id` by [authorization-service](../authorization-service/README.md) and [customer-service](../customer-service/README.md). |
 
 ---
 
@@ -21,8 +21,8 @@
 - Create identities during signup through an internal, service-to-service API.
 - Look up identities for login and status checks (internal API).
 - **Verify ownership** of an email address (one-time link token) and a mobile number (six-digit OTP). Users can do this before they have ever logged in.
-- Update profile fields, soft-delete, suspend and reactivate identities (JWT required).
-- Link and unlink external login providers (JWT required).
+- Update profile fields and soft-delete identities, link and unlink login providers, and read audit logs: allowed for the **owner** or anyone with the matching `identity:*` permission.
+- Suspend and reactivate identities: `identity:suspend` permission only (admins).
 - Record an audit log entry for every change.
 
 Out of scope: passwords and JWT issuing ([auth-service](../auth-service/README.md)), roles and permissions ([authorization-service](../authorization-service/README.md)), and actually sending emails or SMS (no notification service exists yet; see [Verification delivery](#36-verification-delivery)).
@@ -37,7 +37,7 @@ The service exposes three surfaces, each with its own access rule:
 |---|---|---|---|---|
 | **Internal** | `/api/identity/internal/*` | `backend` Docker network only; the gateway returns 404 | `x-internal-token` header (shared `INTERNAL_SERVICE_TOKEN`) | Called during signup and login, before the user has a JWT |
 | **Verification** | `/api/identity/verify-email`, `/verify-mobile`, `/verifications/resend` | Public, through the gateway | None; the one-time code is the credential | Users verify from an email link or SMS, often before logging in |
-| **Account** | `/api/identity/identities/*` | Public, through the gateway | Bearer **access JWT** | Everything else |
+| **Account** | `/api/identity/identities/*` | Public, through the gateway | Bearer **access JWT**, then owner or `identity:*` permission | Everything else |
 | Health | `/api/identity/health` | Public | None | Docker and gateway probes |
 
 ```mermaid
@@ -52,7 +52,8 @@ flowchart LR
 
 - **Default-deny authentication.** A global `JwtAuthGuard` (`APP_GUARD`) protects every route. Only routes marked `@Public()` skip it: health, the verification endpoints, and the internal controller, which uses `InternalServiceGuard` instead.
 - **Trusted user ID header.** On a valid token the JWT strategy writes the token's `sub` into the `x-user-id` request header. A middleware in `main.ts` deletes any client-supplied `x-user-id` first, so the header can only come from a verified token.
-- Identity IDs are the cross-service key for authorization (`user_roles.identity_id`) and customers (`customers.identity_id`). No foreign keys cross services.
+- **Owner or permission.** After authentication, each account endpoint checks access. The **owner** (JWT user ID equal to the identity ID) passes without any further call. Anyone else needs the matching `identity:<action>` permission, which `AccessControlService` asks authorization-service for (`POST /api/authorization/authorize` with `x-internal-token`, 2-second timeout). The check fails closed: if authorization-service is unreachable, slow or misconfigured, the request gets **503**, never access. A 400 from authorization-service (an identity ID it can't evaluate) counts as a denial (403).
+- Identity IDs equal auth-service `users.id`, because auth-service creates the identity first and reuses its ID. They are also the cross-service key for authorization (`user_roles.identity_id`) and customers (`customers.identity_id`). No foreign keys cross services.
 
 ---
 
@@ -66,7 +67,9 @@ src/
 │   ├── public.decorator.ts       # @Public() → skips JwtAuthGuard
 │   ├── jwt-auth.guard.ts         # global guard (AuthGuard('jwt') + @Public check)
 │   ├── jwt.strategy.ts           # verifies access token, sets x-user-id
-│   └── internal-service.guard.ts # constant-time x-internal-token check, fails closed
+│   ├── internal-service.guard.ts # constant-time x-internal-token check, fails closed
+│   ├── access-control.service.ts # owner-or-permission checks via authorization-service
+│   └── current-user-id.decorator.ts # @CurrentUserId() reads the trusted x-user-id
 ├── health/health.controller.ts   # public; SELECT 1 with a 2 s timeout
 ├── prisma/                       # global PrismaService
 └── identity/
@@ -77,7 +80,7 @@ src/
     ├── identity.service.ts              # CRUD, providers, status, audit
     ├── verification.service.ts          # issue / verify / resend codes
     ├── verification-notifier.ts         # delivery stub
-    └── dto/  create-identity, update-identity, link-provider,
+    └── dto/  create-identity, internal-create-identity (optional id), update-identity, link-provider,
               issue-verification, verify-email, verify-mobile, resend-verification
 ```
 
@@ -135,9 +138,10 @@ stateDiagram-v2
 |---|---|
 | Validation failure, invalid or expired verification code, mobile channel without a number | 400 |
 | Missing or invalid JWT on account endpoints; missing or wrong `x-internal-token` on internal endpoints | 401 |
+| Not the owner and missing the required `identity:*` permission | 403 |
 | Identity or provider not found | 404 |
 | Duplicate email or mobile on create; channel already verified | 409 |
-| Code issuing in production with no delivery provider; health check with the database unreachable | 503 |
+| Code issuing in production with no delivery provider; health check with the database unreachable; authorization-service unavailable for a non-owner request | 503 |
 | Duplicate `(provider, externalId)` on link, or duplicate mobile on update | 500 (Prisma `P2002` isn't mapped yet) |
 
 ### 3.6 Verification delivery
@@ -165,7 +169,7 @@ All paths are relative to `/api/identity`.
 
 | Method | Path | Body or query | Success | Errors |
 |---|---|---|---|---|
-| POST | `/internal/identities` | `CreateIdentityDto` | 201 identity (`PENDING_VERIFICATION`) | 400, 401, 409 |
+| POST | `/internal/identities` | `CreateIdentityDto` plus optional `id` (UUID, so the identity can share the auth user ID) | 201 identity (`PENDING_VERIFICATION`) | 400, 401, 409 (email, mobile or ID taken) |
 | GET | `/internal/identities/by-email?email=` | – | 200 identity with providers | 400, 401, 404 |
 | GET | `/internal/identities/:id` | – | 200 identity with providers | 400 (not a UUID), 401, 404 |
 | POST | `/internal/identities/:id/verifications` | `{ channel: 'email' \| 'mobile' }` | 201 `{ verificationId, channel, expiresAt, devCode? }` | 400, 401, 404, 409, 503 |
@@ -178,18 +182,20 @@ All paths are relative to `/api/identity`.
 | POST | `/verify-mobile` | `{ mobileNumber, otp }` | 200 `{ verified: true, channel: 'mobile' }` | 400 |
 | POST | `/verifications/resend` | `{ channel, email }` or `{ channel, mobileNumber }` | 202 `{ message }` (always) | 400 (validation only) |
 
-### Account: Bearer access JWT required
+### Account: Bearer access JWT required, then owner or permission
 
-| Method | Path | Body | Success | Errors |
-|---|---|---|---|---|
-| GET | `/identities/:id` | – | 200 identity with providers | 401, 404 |
-| PUT | `/identities/:id` | `UpdateIdentityDto` | 200 identity | 400, 401, 404 |
-| DELETE | `/identities/:id` | – | 200 identity (soft-deleted) | 401, 404 |
-| POST | `/identities/:id/providers` | `LinkProviderDto` | 201 provider | 401, 404, 500 (duplicate) |
-| DELETE | `/identities/:id/providers/:providerId` | – | 200 `{ message }` | 401, 404 |
-| POST | `/identities/:id/suspend` | – | 200 identity | 401, 404 |
-| POST | `/identities/:id/reactivate` | – | 200 identity | 401, 404 |
-| GET | `/identities/:id/audit-logs` | – | 200 audit log array | 401, 404 |
+"Owner" means the JWT user ID equals `:id`. Every row can also return 403 (not allowed) and 503 (authorization-service unavailable, non-owner requests only).
+
+| Method | Path | Body | Who | Success | Errors |
+|---|---|---|---|---|---|
+| GET | `/identities/:id` | – | owner or `identity:read` | 200 identity with providers | 401, 403, 404 |
+| PUT | `/identities/:id` | `UpdateIdentityDto` | owner or `identity:update` | 200 identity | 400, 401, 403, 404 |
+| DELETE | `/identities/:id` | – | owner or `identity:delete` | 200 identity (soft-deleted; the owner can no longer log in) | 401, 403, 404 |
+| POST | `/identities/:id/providers` | `LinkProviderDto` | owner or `identity:update` | 201 provider | 401, 403, 404, 500 (duplicate) |
+| DELETE | `/identities/:id/providers/:providerId` | – | owner or `identity:update` | 200 `{ message }` | 401, 403, 404 |
+| POST | `/identities/:id/suspend` | – | `identity:suspend` only | 200 identity | 401, 403, 404 |
+| POST | `/identities/:id/reactivate` | – | `identity:suspend` only | 200 identity | 401, 403, 404 |
+| GET | `/identities/:id/audit-logs` | – | owner or `identity:audit` | 200 audit log array | 401, 403, 404 |
 
 The previous `POST /identities`, `POST /identities/:id/verify-email` and `POST /identities/:id/verify-mobile` were removed. Creation moved to the internal API, and verification moved to the public endpoints above, which check real codes.
 
@@ -355,7 +361,8 @@ flowchart LR
 | `PORT` | no | `3001` | HTTP port |
 | `DATABASE_URL` | yes | – | Postgres connection string |
 | `JWT_SECRET` | yes | `changeme` (fallback in code; never use it outside local development) | Verifies access tokens; must match auth-service. Compose maps it from `SECRET_KEY`. |
-| `INTERNAL_SERVICE_TOKEN` | yes, for internal calls | unset | Shared secret for `x-internal-token`. If unset, every internal call gets 401 and a warning is logged at startup. |
+| `INTERNAL_SERVICE_TOKEN` | **yes** | unset | Shared secret for `x-internal-token`: checked on incoming `/internal/*` calls and sent to authorization-service. If unset, internal calls get 401 and non-owner account requests get 503. |
+| `AUTHORIZATION_SERVICE_URL` | no | `http://authorization-service:3002` | Base URL for permission checks |
 | `NODE_ENV` | no | – | `production` hides Swagger, omits `devCode`, and makes issuing return 503 until delivery is configured |
 | `VERIFICATION_EMAIL_TTL_MINUTES` | no | `30` | Email token lifetime |
 | `VERIFICATION_OTP_TTL_MINUTES` | no | `10` | OTP lifetime |
@@ -391,9 +398,9 @@ JWT_SECRET=dev INTERNAL_SERVICE_TOKEN=dev-internal npm run start:dev   # http://
 
 ## 9. Known limitations and follow-ups
 
-- **Authentication only, no authorization.** Any logged-in user can read, update, suspend, reactivate, delete or view audit logs for **any** identity. Next step: an ownership rule for self-service endpoints, and an authorization-service check (for example `identity:suspend`) for admin actions.
+- Every non-owner request costs one HTTP call plus an audit insert in authorization-service, with no caching.
+- Suspending or deleting an identity blocks new tokens, but tokens already issued stay valid until they expire.
 - **No email or SMS delivery yet**, so production verification returns 503 until a provider is wired in (see [§3.6](#36-verification-delivery)).
-- auth-service isn't wired to the internal API yet. Its register and login don't create or check identities, and the JWT `sub` (`users.id`) isn't linked to `identities.id`.
 - There's no rate limiting on the public verification endpoints apart from the OTP attempt limit and the resend cooldown. Add gateway or IP throttling.
 - `changedBy` isn't set on audit rows (the `x-user-id` header is available for this).
 - Unique-constraint errors on link and update surface as 500 instead of 409.

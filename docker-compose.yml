@@ -80,12 +80,17 @@ services:
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too}
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      # Set to "false" to let users log in before verifying their email.
+      REQUIRE_VERIFIED_EMAIL: ${REQUIRE_VERIFIED_EMAIL:-true}
     networks:
       - backend
     depends_on:
       postgres:
         condition: service_healthy
       redis:        { condition: service_healthy }
+      identity-service: { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/auth/health || exit 1"]
       interval: 20s
@@ -111,6 +116,7 @@ services:
       # Shared secret for service-to-service calls to /api/identity/internal/*.
       # Unset means every internal call is rejected (fail closed).
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      AUTHORIZATION_SERVICE_URL: http://authorization-service:3002
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     networks:
@@ -118,7 +124,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      auth-service: { condition: service_healthy }
+      authorization-service: { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/identity/health || exit 1"]
       interval: 20s
@@ -141,6 +147,8 @@ services:
       PORT: "3002"
       DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
+      # Every endpoint except /health requires this x-internal-token.
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     networks:
@@ -148,7 +156,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      auth-service: { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/api/authorization/health || exit 1"]
       interval: 20s
@@ -293,6 +300,8 @@ services:
       PORT: "3000"
       DATABASE_URL: postgresql://${POSTGRES_USER:-theauralab}:${POSTGRES_PASSWORD:-theauralab_dev_pw}@host.docker.internal:5432/${POSTGRES_DB:-theauralab}
       JWT_SECRET: ${SECRET_KEY:-change-me}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      AUTHORIZATION_SERVICE_URL: http://authorization-service:3002
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     networks:
@@ -300,7 +309,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      auth-service: { condition: service_healthy }
+      authorization-service: { condition: service_healthy }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/customer/health || exit 1"]
       interval: 20s

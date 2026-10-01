@@ -74,10 +74,15 @@ Each README covers HLD, LLD, API, DB schema, flows, configuration and limitation
 ## Quick start
 
 ```sh
-cp .env.example .env          # then set SECRET_KEY and OPENAI_API_KEY
+cp .env.example .env          # then set SECRET_KEY, INTERNAL_SERVICE_TOKEN and OPENAI_API_KEY
 docker compose up -d --build
 curl http://localhost:8001/health
+
+# make an existing identity the first admin
+docker compose exec authorization-service node dist/cli/assign-role.js <identityId>
 ```
+
+New users must verify their email before logging in. No email provider exists yet, so set `REQUIRE_VERIFIED_EMAIL=false` in `.env` until one does, or users won't be able to log in. See [identity-service §3.6](services/identity-service/README.md#36-verification-delivery).
 
 Swagger UI for each NestJS service is at `/api/<service>/docs` when `NODE_ENV` isn't `production` (compose defaults to `production`, so set `NODE_ENV=development` in `.env` to see it). The [service index](services/README.md#service-index) lists the ports and routes, and [known issues](services/README.md#cross-cutting-known-issues) lists the problems that currently affect startup.
 

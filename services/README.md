@@ -18,7 +18,7 @@
 | **ai-service** | Python / FastAPI | 3000 | `/api/ai/health` only | ChromaDB `TheAuraLab_memories` | [ai-service](ai-service/README.md) |
 | **customer-service** | NestJS | 3000 | `/api/customer/*` | `customers`, `customer_*` | [customer-service](customer-service/README.md) |
 | **identity-service** | NestJS | 3001 | `/api/identity/*` (`/internal/*` blocked) | `identities`, `identity_*` | [identity-service](identity-service/README.md) |
-| **authorization-service** | NestJS | 3002 | – (internal only) | `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` | [authorization-service](authorization-service/README.md) |
+| **authorization-service** | NestJS | 3002 | – (internal only, `x-internal-token`) | `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` | [authorization-service](authorization-service/README.md) |
 | **shared** | TypeScript library | – | – | – | [shared](shared/README.md) |
 
 Every service README has the same sections: **Responsibilities → High-Level Design → Low-Level Design → API → Data model → Flows → Configuration → Run/Build/Test → Known limitations.**
@@ -31,6 +31,7 @@ Every service README has the same sections: **Responsibilities → High-Level De
 | Integrate the chat WebSocket | [chat-service §3.3](chat-service/README.md#33-websocket-protocol) |
 | Verify an email or mobile number | [identity-service §2](identity-service/README.md#2-high-level-design) |
 | Know which endpoints need a JWT | [Request authentication](#request-authentication-across-services) |
+| Make someone an admin | [authorization-service §6](authorization-service/README.md#bootstrapping-the-first-admin) |
 | See how an AI reply is produced | [ai-service §3.1](ai-service/README.md#31-pipeline-steps-pipelinerun_pipeline) |
 | Find every table | [Shared database](#shared-database) |
 | See the Redis channels and keys | [Inter-service communication](#inter-service-communication) |
@@ -88,11 +89,13 @@ flowchart TB
 | Service style | NestJS microservices plus one Python worker, each with its own Docker image | Services deploy independently, but every one repeats the same scaffolding |
 | Database | **One shared Postgres database.** Each service owns its tables, but analytics, companion and chat read other services' tables directly | Simple to run, but the schemas are tightly coupled (see [Shared database](#shared-database)) |
 | Authentication | Stateless HS256 JWT with a shared `JWT_SECRET`, verified locally by each service. Every public endpoint needs an access JWT except signup, login, refresh, health, and identity verification (which uses one-time codes). | auth-service isn't called on every request, but tokens can't be revoked and rotating the secret means redeploying every service |
-| Service-to-service | identity-service `/internal/*` uses a shared `INTERNAL_SERVICE_TOKEN` header and is blocked at the gateway; authorization-service isn't routed | Calls made before the user has a token (signup, login) don't need a user JWT |
+| Service-to-service | auth-service → identity-service `/internal/*`, and identity/customer → authorization-service, all with the shared `INTERNAL_SERVICE_TOKEN` header. Neither target is reachable through the gateway. | Calls made before the user has a token (signup, login) don't need a user JWT |
+| Authorization | Owner-or-permission: owners act on their own identity and customer records; anyone else needs an RBAC permission from authorization-service. Fails closed (503) when authorization-service can't answer. | One extra HTTP call per non-owner request; no caching yet |
+| User identity | One ID everywhere: `users.id` = `identities.id` = JWT `sub` = `customers.identity_id` | Ownership checks need no lookups |
 | Async messaging | Redis pub/sub between chat-service and ai-service | Low latency, but **at-most-once delivery**: messages are lost while ai-service is down |
 | Vector memory | ChromaDB, used only by ai-service | Relevant memories are retrieved semantically, but separately from Postgres `memories` |
 | Edge | nginx path-based routing | No authentication, rate limiting or TLS at the edge |
-| Migrations | Each service runs `prisma migrate deploy` on boot | No central coordination. authorization-service has **no migrations**. |
+| Migrations | Each service runs `prisma migrate deploy` on boot; all share one `_prisma_migrations` table | No central coordination; startup order comes from `depends_on` |
 
 ---
 
@@ -106,7 +109,7 @@ Every service connects to the same database (`DATABASE_URL` → `postgres:5432/t
 | `conversations`, `messages` | chat-service | analytics-service | – |
 | `memories` | memory-service | analytics-service | – |
 | `identities`, `identity_providers`, `identity_audit_logs`, `identity_verifications` | identity-service | – | – |
-| `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` | authorization-service (⚠️ no migrations) | – | – |
+| `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` | authorization-service (seeds `admin` and the permission catalog) | – | – |
 | `customers`, `customer_addresses`, `customer_preferences`, `customer_audit_logs`, `customer_events` | customer-service | – | – |
 
 ### Logical ER diagram (whole platform)
@@ -158,6 +161,8 @@ Column-level details are in each service's README under **§5 Data model**.
 | From | To | Call |
 |---|---|---|
 | companion-service | memory-service | `DELETE /api/memory/short-term`, forwarding the user's Bearer token |
+| auth-service | identity-service | `POST /api/identity/internal/identities` and `…/:id/verifications` at register; `GET …/:id` at login and refresh (`x-internal-token`, 3 s timeout) |
+| identity-service, customer-service | authorization-service | `POST /api/authorization/authorize` for every non-owner request (`x-internal-token`, 2 s timeout, fails closed) |
 
 No other service-to-service HTTP calls exist. ai-service declares `MEMORY_SERVICE_URL` but never uses it.
 
@@ -209,13 +214,13 @@ flowchart LR
     T --> CP[companion-service ✔]
     T --> AN[analytics-service ✔]
     T --> AU["auth-service /me, /logout ✔"]
-    T --> CU[customer-service ✔]
-    T --> ID["identity-service /identities/* ✔"]
+    T --> CU["customer-service ✔ + owner or customer:*"]
+    T --> ID["identity-service /identities/* ✔ + owner or identity:*"]
     P[Public, no JWT] --> PA["auth /register, /login, /refresh"]
     P --> PV["identity /verify-email, /verify-mobile,<br/>/verifications/resend (one-time code)"]
     P --> PH["every /health"]
     K[x-internal-token<br/>backend network only] --> IN["identity /internal/*"]
-    N[Not routed, no auth yet] --> AZ[authorization-service]
+    K --> AZ["authorization-service (all but /health)"]
 ```
 
 ---
@@ -237,9 +242,11 @@ Networks: `backend` (all services and the data stores) and `edge` (the gateway o
 
 ```mermaid
 flowchart LR
-    PG[(postgres)] --> AUTH[auth-service]
+    PG[(postgres)] --> AZ[authorization]
+    AZ --> ID[identity] & CUST[customer]
+    ID --> AUTH[auth-service]
     RD[(redis)] --> AUTH
-    AUTH --> ID[identity] & AZ[authorization] & CHAT[chat] & MEM[memory] & COMP[companion] & AN[analytics] & CUST[customer]
+    AUTH --> CHAT[chat] & MEM[memory] & COMP[companion] & AN[analytics]
     RD --> CHAT & MEM
     CH[(chromadb)] --> AI[ai-service]
     MEM --> AI
@@ -255,7 +262,8 @@ Copy `.env.example` to `.env` at the repository root. docker-compose maps these 
 | Root variable | Becomes | Used by |
 |---|---|---|
 | `SECRET_KEY` | `JWT_SECRET` | auth, chat, memory, companion, analytics, customer, identity |
-| `INTERNAL_SERVICE_TOKEN` | same | identity-service `/internal/*` (unset means internal calls are rejected) |
+| `INTERNAL_SERVICE_TOKEN` | same | auth, identity, customer, authorization. **Required**: without it signup, login and permission checks fail. |
+| `REQUIRE_VERIFIED_EMAIL` | same (default `true`) | auth-service: block login until the email is verified |
 | `JWT_REFRESH_SECRET` | `JWT_REFRESH_SECRET` | passed to auth-service, but unused |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `DATABASE_URL` | all NestJS services |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | same | ai-service |
@@ -278,14 +286,12 @@ docker compose up -d postgres redis chromadb
 cd services/<service>
 npm install
 npx prisma generate
-npx prisma migrate deploy        # auth, chat, memory, customer, identity
-# authorization has no migrations yet. Do NOT run `prisma db push` against the
-# shared database: its schema doesn't know the other services' tables, so Prisma
-# would offer to drop them. Use a separate schema for local work instead:
-#   DATABASE_URL="…/theauralab?schema=authz" npx prisma db push
+npx prisma migrate deploy        # auth, chat, memory, customer, identity, authorization
+# Never run `prisma db push` against the shared database: each service's schema
+# only knows its own tables, so Prisma would offer to drop everyone else's.
 # (companion and analytics use other services' tables: generate only)
 DATABASE_URL=postgresql://theauralab:theauralab_dev_pw@localhost:5432/theauralab \
-JWT_SECRET=dev-secret PORT=3000 npm run start:dev
+JWT_SECRET=dev-secret INTERNAL_SERVICE_TOKEN=dev-internal PORT=3000 npm run start:dev
 
 # 3. ai-service
 cd services/ai-service && pip install -r requirements.txt && uvicorn main:app --port 3000
@@ -306,21 +312,19 @@ Severity reflects what someone deploying the stack today would hit first.
 
 | # | Severity | Issue | Affected |
 |---|---|---|---|
-| 1 | 🔴 High | **Authentication without authorization.** customer and identity now require a JWT, but any logged-in user can act on any customer or identity, including suspend and delete. authorization-service (unrouted) has no auth at all. | customer, identity, authorization |
-| 2 | 🔴 High | **No email or SMS delivery.** Identity verification codes can't reach users, so issuing a code returns 503 in production. | identity |
-| 3 | 🔴 High | **No migrations** for authorization-service, so `migrate deploy` creates no tables. | authorization |
-| 4 | 🟠 Medium | auth-service isn't wired to identity-service: signup doesn't create an identity, and the JWT `sub` (`users.id`) isn't linked to `identities.id`. | auth, identity, customer |
-| 5 | 🟠 Medium | AI-extracted memories go to ChromaDB only, never to Postgres `memories`, so analytics and the memory UI don't see them. | ai, memory, analytics |
-| 6 | 🟠 Medium | Assistant replies aren't persisted, and `message_count`, `emotion` and `summary` are never updated. | chat, analytics |
-| 7 | 🟠 Medium | Chat sockets don't check that the user owns the `conversationId` they send. | chat |
-| 8 | 🟠 Medium | Redis pub/sub isn't durable, and neither chat-service nor ai-service can scale horizontally. | chat, ai |
-| 9 | 🟠 Medium | Shared database with cross-service table access (`users` is written by two services). | auth, companion, chat, analytics |
-| 10 | 🟡 Low | The refresh token is in a query string, there's one secret for both token types, there's no revocation, and the code falls back to a `changeme` secret. | auth (and all JWT verifiers) |
-| 11 | 🟡 Low | The `shared` package is unused and its types have drifted. | shared |
-| 12 | 🟡 Low | No automated tests, structured logging, metrics, tracing or correlation IDs anywhere. | all |
-| 13 | 🟡 Low | customer-service's outbox (`customer_events`) has no relay. | customer |
-| 14 | 🟡 Low | The repo already fails `npm run lint` (36 pre-existing ESLint errors, mostly `no-explicit-any`), so the pre-push hook can't pass. | all TypeScript services |
+| 1 | 🔴 High | **No email or SMS delivery.** Verification codes can't reach users: issuing returns 503 in production, and with `REQUIRE_VERIFIED_EMAIL=true` (the default) **new users can't log in** until a provider exists. | identity, auth |
+| 2 | 🟠 Medium | **Coarse admin model.** authorization-service trusts any holder of `INTERNAL_SERVICE_TOKEN` and doesn't know which admin is acting. Permission checks aren't cached, and suspending or deleting an identity doesn't revoke tokens already issued. | authorization, identity, customer, auth |
+| 3 | 🟠 Medium | AI-extracted memories go to ChromaDB only, never to Postgres `memories`, so analytics and the memory UI don't see them. | ai, memory, analytics |
+| 4 | 🟠 Medium | Assistant replies aren't persisted, and `message_count`, `emotion` and `summary` are never updated. | chat, analytics |
+| 5 | 🟠 Medium | Chat sockets don't check that the user owns the `conversationId` they send. | chat |
+| 6 | 🟠 Medium | Redis pub/sub isn't durable, and neither chat-service nor ai-service can scale horizontally. | chat, ai |
+| 7 | 🟠 Medium | Shared database with cross-service table access (`users` is written by two services). | auth, companion, chat, analytics |
+| 8 | 🟡 Low | The refresh token is in a query string, there's one secret for both token types, there's no revocation, and the code falls back to a `changeme` secret. | auth (and all JWT verifiers) |
+| 9 | 🟡 Low | The `shared` package is unused and its types have drifted. | shared |
+| 10 | 🟡 Low | No automated tests, structured logging, metrics, tracing or correlation IDs anywhere. | all |
+| 11 | 🟡 Low | customer-service's outbox (`customer_events`) has no relay. | customer |
+| 12 | 🟡 Low | The repo already fails `npm run lint` (34 pre-existing ESLint errors, mostly `no-explicit-any`), so the pre-push hook can't pass. | all TypeScript services |
 
-Fixed since the first version of this index: `/health` is public everywhere and checks its databases; nginx starts (the unused `frontend` upstream was removed); identity-service has migrations and a gateway route; customer and identity require a JWT; Swagger is hidden when `NODE_ENV=production`.
+Fixed since the first version of this index: ownership and RBAC checks on customer and identity; authorization-service has migrations, a seeded `admin` role and requires the internal token; signup creates the identity with the same ID as the user, and login requires an active identity with a verified email; `/health` is public everywhere and checks its databases; nginx starts (the unused `frontend` upstream was removed); identity-service has migrations and a gateway route; customer and identity require a JWT; Swagger is hidden when `NODE_ENV=production`.
 
 [DEPLOYMENT.md](DEPLOYMENT.md) is older than this index and lists some items that have since changed. For example, companion's `reset-memory` is now implemented.

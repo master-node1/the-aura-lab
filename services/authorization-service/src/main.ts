@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { INTERNAL_TOKEN_HEADER } from './auth/internal-service.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,6 +12,10 @@ async function bootstrap() {
     origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'],
   });
 
+  if (!process.env.INTERNAL_SERVICE_TOKEN) {
+    console.warn('INTERNAL_SERVICE_TOKEN is not set; every request except /health will be rejected');
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
       .setTitle('Authorization Service')
@@ -18,7 +23,8 @@ async function bootstrap() {
         'Manages roles, permissions, policies and evaluates access decisions (RBAC + ABAC).',
       )
       .setVersion('1.0')
-      .addBearerAuth()
+      .addApiKey({ type: 'apiKey', in: 'header', name: INTERNAL_TOKEN_HEADER }, 'internal')
+      .addSecurityRequirements('internal')
       .addTag('roles')
       .addTag('permissions')
       .addTag('policies')

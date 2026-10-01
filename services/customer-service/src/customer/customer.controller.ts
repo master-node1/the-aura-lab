@@ -23,6 +23,8 @@ import {
 import { CustomerStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { AccessControlService } from '../auth/access-control.service';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { USER_ID_HEADER } from '../auth/jwt.strategy';
 import { CustomerService } from './customer.service';
 import { CreateAddressDto } from './dto/create-address.dto';
@@ -58,19 +60,32 @@ class CustomerSearchQuery {
 @ApiTags('customers')
 @ApiBearerAuth()
 @ApiResponse({ status: 401, description: 'Missing or invalid access token' })
+@ApiResponse({ status: 403, description: 'Not the owner and missing the required permission' })
+@ApiResponse({ status: 503, description: 'authorization-service unavailable' })
 @Controller('customers')
 export class CustomerController {
-  constructor(private readonly customers: CustomerService) {}
+  constructor(
+    private readonly customers: CustomerService,
+    private readonly access: AccessControlService,
+  ) {}
+
+  /** The owner (JWT user ID == customer.identityId) passes; anyone else needs customer:<action>. */
+  private async authorize(customerId: string, userId: string, action: string) {
+    const ownerId = await this.customers.findOwnerIdentityId(customerId);
+    await this.access.requireOwnerOrPermission(userId, ownerId, 'customer', action);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a customer profile linked to an identity' })
-  create(@Body() dto: CreateCustomerDto) {
+  async create(@Body() dto: CreateCustomerDto, @CurrentUserId() userId: string) {
+    await this.access.requireOwnerOrPermission(userId, dto.identityId, 'customer', 'create');
     return this.customers.create(dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Search customers' })
-  search(@Query() query: CustomerSearchQuery) {
+  @ApiOperation({ summary: 'Search customers. Requires customer:read.' })
+  async search(@Query() query: CustomerSearchQuery, @CurrentUserId() userId: string) {
+    await this.access.requirePermission(userId, 'customer', 'read');
     return this.customers.search(query);
   }
 
@@ -90,74 +105,91 @@ export class CustomerController {
   }
 
   @Get(':customerId')
-  getById(@Param('customerId', ParseUUIDPipe) customerId: string) {
+  async getById(@Param('customerId', ParseUUIDPipe) customerId: string, @CurrentUserId() userId: string) {
+    await this.authorize(customerId, userId, 'read');
     return this.customers.findById(customerId);
   }
 
   @Put(':customerId')
-  update(
+  async update(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Body() dto: UpdateCustomerDto,
+    @CurrentUserId() userId: string,
   ) {
+    await this.authorize(customerId, userId, 'update');
     return this.customers.update(customerId, dto);
   }
 
   @Delete(':customerId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse({ description: 'Customer was soft-deleted' })
-  remove(@Param('customerId', ParseUUIDPipe) customerId: string) {
+  async remove(@Param('customerId', ParseUUIDPipe) customerId: string, @CurrentUserId() userId: string) {
+    await this.authorize(customerId, userId, 'delete');
     return this.customers.remove(customerId);
   }
 
   @Patch(':customerId/status')
-  updateStatus(
+  @ApiOperation({ summary: 'Change customer status. Requires customer:manage.' })
+  async updateStatus(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Body() dto: UpdateCustomerStatusDto,
+    @CurrentUserId() userId: string,
   ) {
+    await this.access.requirePermission(userId, 'customer', 'manage');
     return this.customers.updateStatus(customerId, dto);
   }
 
   @Post(':customerId/addresses')
-  createAddress(
+  async createAddress(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Body() dto: CreateAddressDto,
+    @CurrentUserId() userId: string,
   ) {
+    await this.authorize(customerId, userId, 'update');
     return this.customers.createAddress(customerId, dto);
   }
 
   @Get(':customerId/addresses')
-  listAddresses(@Param('customerId', ParseUUIDPipe) customerId: string) {
+  async listAddresses(@Param('customerId', ParseUUIDPipe) customerId: string, @CurrentUserId() userId: string) {
+    await this.authorize(customerId, userId, 'read');
     return this.customers.listAddresses(customerId);
   }
 
   @Put(':customerId/addresses/:addressId')
-  updateAddress(
+  async updateAddress(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Param('addressId', ParseUUIDPipe) addressId: string,
     @Body() dto: UpdateAddressDto,
+    @CurrentUserId() userId: string,
   ) {
+    await this.authorize(customerId, userId, 'update');
     return this.customers.updateAddress(customerId, addressId, dto);
   }
 
   @Delete(':customerId/addresses/:addressId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  removeAddress(
+  async removeAddress(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Param('addressId', ParseUUIDPipe) addressId: string,
+    @CurrentUserId() userId: string,
   ) {
+    await this.authorize(customerId, userId, 'update');
     return this.customers.removeAddress(customerId, addressId);
   }
 
   @Get(':customerId/preferences')
-  getPreferences(@Param('customerId', ParseUUIDPipe) customerId: string) {
+  async getPreferences(@Param('customerId', ParseUUIDPipe) customerId: string, @CurrentUserId() userId: string) {
+    await this.authorize(customerId, userId, 'read');
     return this.customers.getPreferences(customerId);
   }
 
   @Put(':customerId/preferences')
-  updatePreferences(
+  async updatePreferences(
     @Param('customerId', ParseUUIDPipe) customerId: string,
     @Body() dto: UpdatePreferencesDto,
+    @CurrentUserId() userId: string,
   ) {
+    await this.authorize(customerId, userId, 'update');
     return this.customers.updatePreferences(customerId, dto);
   }
 }

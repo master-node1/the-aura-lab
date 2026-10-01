@@ -1,5 +1,6 @@
 import { Controller, Get, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 const SERVICE = 'authorization-service';
@@ -9,6 +10,7 @@ type CheckStatus = 'up' | 'down';
 
 /** Unauthenticated so Docker and the gateway can probe it. */
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);

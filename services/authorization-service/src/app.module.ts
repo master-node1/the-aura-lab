@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { InternalServiceGuard } from './auth/internal-service.guard';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { RolesModule } from './roles/roles.module';
@@ -17,5 +19,6 @@ import { AuthorizationModule } from './authorization/authorization.module';
     AuthorizationModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: InternalServiceGuard }],
 })
 export class AppModule {}
