@@ -25,13 +25,6 @@ import { AssignRoleDto } from './dto/assign-role.dto';
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
-  @Get('health')
-  @ApiOperation({ summary: 'Service health check' })
-  @ApiResponse({ status: 200, description: 'Service is healthy' })
-  health() {
-    return { status: 'ok', service: 'authorization-service' };
-  }
-
   @Post('roles')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new role' })

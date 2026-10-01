@@ -129,7 +129,7 @@ The companion is called **Sora**. The archetypes are `friend` (the default and t
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/health` | `{ "status": "ok", "service": "ai-service" }`. This is a liveness check only; it doesn't check Redis, Chroma or OpenAI. |
+| GET | `/health` | 200 `{ "status": "ok", "service": "ai-service", "checks": { "redis": "up", "chromadb": "up" } }`, or 503 with `"status": "error"` and the failed check marked `down`. Redis is checked with `PING` and ChromaDB with `heartbeat` (run in a worker thread), each with a 2-second timeout. OpenAI isn't checked. |
 
 ### Redis input: `TheAuraLab:ai:process`
 
@@ -262,6 +262,6 @@ The Docker image is multi-stage, runs as the non-root `app` user and has a built
 - The emotion model `gpt-3.5-turbo` is hard-coded.
 - `voice_service.py`, `stream_respond`, `generate_support`, `should_store` and the heuristic emotion detector are unused.
 - `memory_service.py` builds a second `MemoryService` and `VectorStoreService` singleton (a module-level `memory_service`, imported by `MemoryAgent`) alongside the one in `pipeline.py`.
-- The health check doesn't verify dependencies.
+- The health check doesn't cover OpenAI. If a ChromaDB call hangs, its worker thread keeps running after the 2-second timeout returns `down`.
 - Prompt injection: user text is placed straight into the specialist and extraction prompts.
 - There are no tests.

@@ -91,9 +91,19 @@ export class CustomerService {
     return customer;
   }
 
+  /** Identity that owns the customer (for ownership checks); 404 if missing or deleted. */
+  async findOwnerIdentityId(customerId: string): Promise<string> {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: { identityId: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+    return customer.identityId;
+  }
+
   async findProfile(identityId: string) {
     if (!identityId || !isUUID(identityId)) {
-      throw new BadRequestException('A valid x-identity-id header is required');
+      throw new BadRequestException('The access token does not contain a valid user ID');
     }
     const customer = await this.prisma.customer.findFirst({
       where: { identityId, deletedAt: null },

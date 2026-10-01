@@ -9,7 +9,7 @@
 | **Port** | `3000` |
 | **Route prefix** | `/api/companion` |
 | **Gateway route** | `/api/companion/*` |
-| **Swagger** | `/api/companion/docs` |
+| **Swagger** | `/api/companion/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | none. It reads and writes columns of `users`, which auth-service owns |
 | **Calls** | memory-service `DELETE /api/memory/short-term` |
 | **Depends on** | PostgreSQL, memory-service |
@@ -50,6 +50,7 @@ src/
 ├── app.module.ts           # Config, Passport, JwtModule; providers PrismaService, CompanionService, JwtStrategy
 ├── prisma.service.ts
 ├── jwt.strategy.ts         # access tokens only
+├── health.controller.ts    # public; SELECT 1 with a 2 s timeout, 503 when down
 ├── companion.controller.ts # class-level AuthGuard('jwt'); inline UpdateProfileDto
 └── companion.service.ts    # ARCHETYPES constant + profile logic
 ```
@@ -93,9 +94,9 @@ All paths are relative to `/api/companion`, and **every route requires** `Author
 | PATCH | `/profile` | `UpdateProfileDto` | 200 user | 400, 401, 409 |
 | GET | `/archetypes` | – | 200 `{ archetypes[] }` | 401 |
 | POST | `/reset-memory` | – | 200 `{ message: 'Short-term memory cleared' }` | 401 |
-| GET | `/health` | – | 200 `{status, service}`. **Also JWT-guarded.** | 401 |
+| GET | `/health` (public) | – | 200 `{ status: 'ok', service, checks: { database: 'up' } }`; 503 with the failed check marked `down` | – |
 
-> ⚠️ Because the guard is set on the controller class, `/health` returns 401 to the Docker healthcheck. Move it to an unguarded controller.
+`/health` lives in its own unguarded `HealthController` (`SELECT 1`, 2-second timeout).
 
 ```http
 PATCH /api/companion/profile
@@ -154,6 +155,7 @@ The reset-memory flow is shown in [memory-service](../memory-service/README.md#r
 | `JWT_SECRET` | yes | `changeme` | Verifies access tokens |
 | `MEMORY_SERVICE_URL` | no | `http://memory-service:3000` | Base URL for reset-memory. Not set in compose, so the default is used. |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Allowed origins |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 | `REDIS_URL` | – | – | Passed in by compose but **not used**, even though `ioredis` is listed as a dependency |
 
 ---
@@ -173,7 +175,6 @@ npm run start:dev
 
 ## 9. Known limitations and follow-ups
 
-- `/health` is behind the JWT guard.
 - `reset-memory` ignores the HTTP status that memory-service returns and has no timeout, so it always reports success.
 - A schema copy of `users` means two services write the same table. Any change to the table must be applied in both places.
 - `username` updates skip the format rules that registration enforces (3–30 characters, `[A-Za-z0-9_-]`).

@@ -4,10 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateIdentityDto } from './dto/create-identity.dto';
+import { InternalCreateIdentityDto } from './dto/internal-create-identity.dto';
 import { UpdateIdentityDto } from './dto/update-identity.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
-import { VerifyMobileDto } from './dto/verify-mobile.dto';
 import { LinkProviderDto } from './dto/link-provider.dto';
 import { IdentityStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
@@ -18,7 +16,11 @@ export class IdentityService {
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────
 
-  async createIdentity(dto: CreateIdentityDto) {
+  async createIdentity(dto: InternalCreateIdentityDto) {
+    if (dto.id && (await this.prisma.identity.findUnique({ where: { id: dto.id } }))) {
+      throw new ConflictException('Identity ID already exists');
+    }
+
     const existingEmail = await this.prisma.identity.findUnique({
       where: { email: dto.email },
     });
@@ -37,6 +39,7 @@ export class IdentityService {
 
     const identity = await this.prisma.identity.create({
       data: {
+        ...(dto.id && { id: dto.id }),
         email: dto.email,
         displayName: dto.displayName,
         firstName: dto.firstName,
@@ -108,39 +111,6 @@ export class IdentityService {
     await this.createAuditLog(id, 'IDENTITY_DELETED');
 
     return deleted;
-  }
-
-  // ─── VERIFICATION ─────────────────────────────────────────────────────────────
-
-  async verifyEmail(id: string, _dto: VerifyEmailDto) {
-    await this.findById(id); // throws if not found
-
-    // Simplified: in production, validate the token against a stored/signed value.
-    const updated = await this.prisma.identity.update({
-      where: { id },
-      data: {
-        isEmailVerified: true,
-        status: IdentityStatus.VERIFIED,
-      },
-    });
-
-    await this.createAuditLog(id, 'EMAIL_VERIFIED');
-
-    return updated;
-  }
-
-  async verifyMobile(id: string, _dto: VerifyMobileDto) {
-    await this.findById(id); // throws if not found
-
-    // Simplified: in production, validate OTP against a stored/time-limited code.
-    const updated = await this.prisma.identity.update({
-      where: { id },
-      data: { isMobileVerified: true },
-    });
-
-    await this.createAuditLog(id, 'MOBILE_VERIFIED');
-
-    return updated;
   }
 
   // ─── PROVIDERS ────────────────────────────────────────────────────────────────

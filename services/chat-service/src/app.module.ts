@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { ChatGateway } from './gateway/chat.gateway';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ChatGateway } from './gateway/chat.gateway';
     }),
     ConversationModule,
   ],
+  controllers: [HealthController],
   providers: [ChatGateway],
 })
 export class AppModule {}

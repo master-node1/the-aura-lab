@@ -12,17 +12,19 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const config = new DocumentBuilder()
-    .setTitle('TheAuraLab — Chat Service')
-    .setDescription('Manages conversations, messages, and the Socket.IO real-time WebSocket gateway.')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('conversations')
-    .build();
-  SwaggerModule.setup('api/chat/docs', app, SwaggerModule.createDocument(app, config));
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('TheAuraLab — Chat Service')
+      .setDescription('Manages conversations, messages, and the Socket.IO real-time WebSocket gateway.')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('conversations')
+      .build();
+    SwaggerModule.setup('api/chat/docs', app, SwaggerModule.createDocument(app, config));
+  }
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(`Chat service running on port ${process.env.PORT ?? 3000}`);
-  console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/chat/docs`);
+  if (process.env.NODE_ENV !== 'production') console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/chat/docs`);
 }
 bootstrap();

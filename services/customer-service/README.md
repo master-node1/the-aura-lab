@@ -5,11 +5,11 @@
 
 | | |
 |---|---|
-| **Stack** | NestJS 10, Prisma 6, PostgreSQL |
+| **Stack** | NestJS 10, Prisma 6, PostgreSQL, Passport-JWT |
 | **Port** | `3000` |
 | **Route prefix** | `/api/customer` |
 | **Gateway route** | `/api/customer/*` |
-| **Swagger** | `/api/customer/docs` |
+| **Swagger** | `/api/customer/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `customers`, `customer_addresses`, `customer_preferences`, `customer_audit_logs`, `customer_events` |
 | **Depends on** | PostgreSQL |
 | **Related** | `customers.identity_id` holds an ID from [identity-service](../identity-service/README.md) (no foreign key) |
@@ -18,9 +18,10 @@
 
 ## 1. Responsibilities
 
+- Require a valid access JWT on every endpoint except `/health`.
 - Create a customer profile linked to an identity, one customer per identity.
 - Search customers by name, email or mobile number, optionally filtered by status, with pagination.
-- Read and update a profile by customer ID or by the caller's identity (`x-identity-id` header).
+- Read and update a profile by customer ID, or the caller's own profile, using the user ID taken from the JWT (`x-user-id`).
 - Soft-delete customers and change their status (`ACTIVE`, `BLOCKED`, `SUSPENDED`).
 - Manage addresses, with **at most one default shipping and one default billing address** per customer.
 - Manage marketing and notification preferences.
@@ -46,6 +47,9 @@ flowchart LR
 
 - **Transactional outbox.** Every write, along with its audit row and event row, is committed atomically through `recordCustomerChange()`. Events start with `published_at = NULL` and `attempts = 0`. **No relay or publisher exists yet** to deliver them.
 - **Soft delete.** `deleted_at` is set and `status` becomes `DELETED`. Every read filters on `deleted_at IS NULL`.
+- **Default-deny authentication.** A global `JwtAuthGuard` (`APP_GUARD`) requires a Bearer access token (signed with `JWT_SECRET`, `type: access`) on every route. Only routes marked `@Public()` skip it, which today is `/health`.
+- **Owner or permission.** After authentication, each account endpoint checks access. The **owner** (JWT user ID equal to the customer's `identityId`) passes without any further call. Anyone else needs the matching `customer:<action>` permission, which `AccessControlService` asks authorization-service for (`POST /api/authorization/authorize` with `x-internal-token`, 2-second timeout). The check fails closed: if authorization-service is unreachable, slow or misconfigured, the request gets **503**, never access. A 400 from authorization-service (an identity ID it can't evaluate) counts as a denial (403).
+- **Trusted user ID header.** A middleware in `main.ts` deletes any client-supplied `x-user-id`. The JWT strategy then sets `x-user-id` to the token's `sub`, so `/customers/profile` can only act on the caller's own profile.
 
 ---
 
@@ -54,8 +58,14 @@ flowchart LR
 ```text
 src/
 ├── main.ts                       # prefix api/customer, ValidationPipe, CORS, Swagger
-├── app.module.ts                 # Config, Prisma, CustomerModule, HealthController
-├── health.controller.ts          # GET /health (unguarded)
+├── app.module.ts                 # Config, Passport, Prisma, CustomerModule; JwtStrategy + global JwtAuthGuard
+├── health.controller.ts          # GET /health (public): SELECT 1 with a 2 s timeout, 503 when down
+├── auth/
+│   ├── public.decorator.ts       # @Public() → skips the global guard
+│   ├── jwt-auth.guard.ts         # global guard (AuthGuard('jwt') + @Public check)
+│   ├── jwt.strategy.ts           # verifies access token, sets x-user-id
+│   ├── access-control.service.ts # owner-or-permission checks via authorization-service
+│   └── current-user-id.decorator.ts # @CurrentUserId() reads the trusted x-user-id
 ├── prisma/                       # global PrismaService
 └── customer/
     ├── customer.module.ts
@@ -117,37 +127,46 @@ The audit `action` matches the event type, except status changes, which are alwa
 
 | Case | HTTP |
 |---|---|
-| DTO, query or UUID validation failure; DELETED via PATCH; missing or invalid `x-identity-id` | 400 |
+| DTO, query or UUID validation failure; DELETED via PATCH; token `sub` isn't a UUID (`/profile`) | 400 |
+| Missing, expired or invalid access token, or a refresh token used instead of an access token | 401 |
+| Not the owner and missing the required `customer:*` permission | 403 |
+| authorization-service unavailable for a non-owner request | 503 |
 | Customer, profile or address not found (or soft-deleted) | 404 |
 | Unique violation on create or update; deleting a default address | 409 |
 | Any other Prisma error | 500 (rethrown unchanged) |
+| `/health` with the database unreachable | 503 |
 
 ---
 
 ## 4. API
 
-All paths are relative to `/api/customer`. **No authentication is enforced.** The `/profile` endpoints trust the `x-identity-id` header.
+All paths are relative to `/api/customer`. **Every endpoint except `/health` requires** `Authorization: Bearer <access token>` and returns 401 without one. The `/profile` endpoints use the user ID from the token; the old `x-identity-id` header is ignored.
 
-| Method | Path | Body or query | Success | Errors |
-|---|---|---|---|---|
-| GET | `/health` | – | 200 `{status, service}` | – |
-| POST | `/customers` | `CreateCustomerDto` | 201 customer | 400, 409 |
-| GET | `/customers` | `q, status, page, pageSize` | 200 `{ data[], page, pageSize, total }` | 400 |
-| GET | `/customers/profile` | header `x-identity-id` | 200 customer with `addresses` and `preferences` | 400, 404 |
-| PUT | `/customers/profile` | header + `UpdateCustomerDto` | 200 customer | 400, 404, 409 |
-| GET | `/customers/:customerId` | – | 200 customer with `addresses` and `preferences` | 400, 404 |
-| PUT | `/customers/:customerId` | `UpdateCustomerDto` | 200 customer | 400, 404, 409 |
-| DELETE | `/customers/:customerId` | – | 204 | 400, 404 |
-| PATCH | `/customers/:customerId/status` | `{ status }` | 200 customer | 400, 404 |
-| POST | `/customers/:customerId/addresses` | `CreateAddressDto` | 201 address | 400, 404 |
-| GET | `/customers/:customerId/addresses` | – | 200 addresses (defaults first, then oldest first) | 400, 404 |
-| PUT | `/customers/:customerId/addresses/:addressId` | `UpdateAddressDto` | 200 address | 400, 404 |
-| DELETE | `/customers/:customerId/addresses/:addressId` | – | 204 | 400, 404, 409 |
-| GET | `/customers/:customerId/preferences` | – | 200 preferences, or defaults | 400, 404 |
-| PUT | `/customers/:customerId/preferences` | `UpdatePreferencesDto` | 200 preferences | 400, 404 |
+"Owner" means the JWT user ID equals the customer's `identityId` (for `POST /customers`, the `identityId` in the body). Rows with a permission can also return 403, and 503 when authorization-service is unavailable for a non-owner request.
+
+| Method | Path | Body or query | Who | Success | Errors |
+|---|---|---|---|---|---|
+| GET | `/health` (public) | – | anyone | 200 `{ status, service, checks: { database: 'up' } }` | 503 when the database is down |
+| POST | `/customers` | `CreateCustomerDto` | owner of `identityId` or `customer:create` | 201 customer | 400, 403, 409 |
+| GET | `/customers` | `q, status, page, pageSize` | `customer:read` only | 200 `{ data[], page, pageSize, total }` | 400, 403 |
+| GET | `/customers/profile` | – (identity from JWT) | the caller | 200 customer with `addresses` and `preferences` | 400, 404 |
+| PUT | `/customers/profile` | `UpdateCustomerDto` (identity from JWT) | the caller | 200 customer | 400, 404, 409 |
+| GET | `/customers/:customerId` | – | owner or `customer:read` | 200 customer with `addresses` and `preferences` | 400, 403, 404 |
+| PUT | `/customers/:customerId` | `UpdateCustomerDto` | owner or `customer:update` | 200 customer | 400, 403, 404, 409 |
+| DELETE | `/customers/:customerId` | – | owner or `customer:delete` | 204 (soft delete) | 400, 403, 404 |
+| PATCH | `/customers/:customerId/status` | `{ status }` | `customer:manage` only | 200 customer | 400, 403, 404 |
+| POST | `/customers/:customerId/addresses` | `CreateAddressDto` | owner or `customer:update` | 201 address | 400, 403, 404 |
+| GET | `/customers/:customerId/addresses` | – | owner or `customer:read` | 200 addresses (defaults first, then oldest first) | 400, 403, 404 |
+| PUT | `/customers/:customerId/addresses/:addressId` | `UpdateAddressDto` | owner or `customer:update` | 200 address | 400, 403, 404 |
+| DELETE | `/customers/:customerId/addresses/:addressId` | – | owner or `customer:update` | 204 | 400, 403, 404, 409 |
+| GET | `/customers/:customerId/preferences` | – | owner or `customer:read` | 200 preferences, or defaults | 400, 403, 404 |
+| PUT | `/customers/:customerId/preferences` | `UpdatePreferencesDto` | owner or `customer:update` | 200 preferences | 400, 403, 404 |
+
+For a by-ID route, the owner lookup runs first, so a missing or deleted customer returns 404 before any permission check.
 
 ```http
 POST /api/customer/customers
+Authorization: Bearer <access token>
 Content-Type: application/json
 
 { "identityId": "3b0f3f9a-1f7e-4e0f-9a3b-2a1b4c5d6e7f", "email": "Alex@Example.com",
@@ -156,6 +175,7 @@ Content-Type: application/json
 
 ```http
 POST /api/customer/customers/{customerId}/addresses
+Authorization: Bearer <access token>
 Content-Type: application/json
 
 { "recipientName": "Alex Morgan", "line1": "100 Market Street", "city": "San Francisco",
@@ -328,8 +348,12 @@ stateDiagram-v2
 |---|---|---|---|
 | `PORT` | no | `3000` | HTTP port |
 | `DATABASE_URL` | yes | – | Postgres connection string |
+| `JWT_SECRET` | yes | `changeme` (fallback in code; never use it outside local development) | Verifies access tokens; must match auth-service |
+| `NODE_ENV` | no | – | `production` hides Swagger |
+| `INTERNAL_SERVICE_TOKEN` | **yes** | – | Sent as `x-internal-token` to authorization-service. If unset, non-owner requests get 503. |
+| `AUTHORIZATION_SERVICE_URL` | no | `http://authorization-service:3002` | Base URL for permission checks |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Allowed origins |
-| `JWT_SECRET`, `REDIS_URL` | – | – | Passed in by compose but **not used** |
+| `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
 ---
 
@@ -344,13 +368,16 @@ npm run start:dev                 # http://localhost:3000/api/customer/docs
 
 The Docker image is multi-stage, runs as the non-root `node` user and prunes dev dependencies.
 
-**Tests:** none exist yet.
+**Tests:** `npm test` runs 24 Jest unit tests in `test/`. They cover:
+
+- every endpoint's access rule: owner or `customer:<action>`, permission-only search and status changes, `/profile` using the JWT user ID, 404 before the permission check, and no service call after a denial
+- the access-control client, including fail-closed 503 and a 400 treated as a denial
 
 ---
 
 ## 9. Known limitations and follow-ups
 
-- **No authentication or authorization.** Any caller can search, read or modify any customer. The `/profile` endpoints trust a client-supplied `x-identity-id` header, which is only safe behind a gateway that sets it from a verified JWT.
+- Every non-owner request costs one HTTP call plus an audit insert in authorization-service, with no caching.
 - The **outbox has no relay**, so `customer_events` grows without ever being published.
 - `prisma` is a devDependency and `npm prune --omit=dev` removes it, so `npx prisma migrate deploy` at container start has to download the CLI at runtime. Move `prisma` to `dependencies`, or run migrations in a separate job.
 - `changedBy` is never set on audit rows.

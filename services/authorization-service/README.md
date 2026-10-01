@@ -8,17 +8,18 @@
 | **Stack** | NestJS 10, Prisma 6, PostgreSQL |
 | **Port** | `3002` |
 | **Route prefix** | `/api/authorization` |
-| **Gateway route** | **None.** nginx doesn't route to this service; reach it on the `backend` network or at `localhost:3002` |
-| **Swagger** | `/api/authorization/docs` |
+| **Gateway route** | **None, by design.** It's internal-only: reach it on the `backend` network with `x-internal-token` |
+| **Swagger** | `/api/authorization/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` |
 | **Depends on** | PostgreSQL |
-| **Used by** | Nothing calls it yet. It's designed as a policy decision point for other services. |
+| **Used by** | identity-service and customer-service, which call `POST /authorize` for every non-owner request |
 
 ---
 
 ## 1. Responsibilities
 
-- CRUD for **roles**. System roles (`isSystem = true`) can't be changed or deleted.
+- Require the shared `INTERNAL_SERVICE_TOKEN` (`x-internal-token` header) on every endpoint except `/health`.
+- CRUD for **roles**. System roles (`isSystem = true`) can't be changed or deleted. The seeded `admin` role is one.
 - CRUD for **permissions**, each a `resource` + `action` pair, for example `product` + `create`.
 - Grant and revoke permissions on roles.
 - Assign and revoke roles for identities.
@@ -32,8 +33,9 @@
 
 ```mermaid
 flowchart LR
-    SVC[Calling service<br/>policy enforcement point] -->|POST /authorize| AZ[authorization-service]
-    ADMIN[Admin tooling] -->|roles / permissions / policies CRUD| AZ
+    SVC["identity-service / customer-service<br/>(policy enforcement points)"] -->|"POST /authorize<br/>x-internal-token"| AZ[authorization-service]
+    ADMIN["Admin tooling (backend network)"] -->|"roles / permissions / policies CRUD<br/>x-internal-token"| AZ
+    CLI["node dist/cli/assign-role.js"] -->|"Prisma (first admin)"| PG
     AZ -->|Prisma| PG[(PostgreSQL)]
     subgraph PG_T[Tables]
       R[roles] --- RP[role_permissions] --- P[permissions]
@@ -55,7 +57,12 @@ src/
 ├── main.ts                    # prefix api/authorization, ValidationPipe, CORS, Swagger, port 3002
 ├── app.module.ts              # Config, Prisma, Roles, Permissions, Policies, Authorization modules
 ├── prisma/                    # global PrismaService
-├── roles/                     # RolesController (+ /health), RolesService, DTOs
+├── auth/
+│   ├── internal-service.guard.ts # global guard: x-internal-token on every route except @Public()
+│   └── public.decorator.ts
+├── cli/assign-role.ts         # bootstrap: assign a role (default admin) to an identity
+├── health/health.controller.ts # public; SELECT 1 with a 2 s timeout, 503 when down
+├── roles/                     # RolesController, RolesService, DTOs
 ├── permissions/               # PermissionsController, PermissionsService, DTOs
 ├── policies/                  # PoliciesController, PoliciesService, DTOs
 └── authorization/             # AuthorizationController, AuthorizationService, CheckAccessDto
@@ -111,13 +118,13 @@ flowchart TD
 
 ## 4. API
 
-All paths are relative to `/api/authorization`. **No endpoint is authenticated.**
+All paths are relative to `/api/authorization`. **Every endpoint except `/health` requires** `x-internal-token: <INTERNAL_SERVICE_TOKEN>` and returns 401 without it.
 
 ### Health
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/health` | `{ status: 'ok', service: 'authorization-service' }` |
+| GET | `/health` | 200 `{ status: 'ok', service, checks: { database: 'up' } }`; 503 with the failed check marked `down` |
 
 ### Roles
 
@@ -233,18 +240,36 @@ erDiagram
 
 | Table | Keys and constraints | Notes |
 |---|---|---|
-| `roles` | PK `id`, UNIQUE `name` | `is_system` defaults to `false`; nothing sets it to `true` yet |
+| `roles` | PK `id`, UNIQUE `name` | `is_system` defaults to `false`. The seeded `admin` role is a system role. |
 | `permissions` | PK `id`, UNIQUE `name`, UNIQUE `(resource, action)` | `*` acts as a wildcard during checks |
 | `role_permissions` | PK `(role_id, permission_id)`, FKs with `ON DELETE CASCADE` | Join table |
 | `user_roles` | PK `(identity_id, role_id)`, FK `role_id` with cascade | `identity_id` has no FK, because identities live in identity-service |
 | `policies` | PK `id`, UNIQUE `name` | `version` defaults to 1, `rules` to `[]`, `is_active` to `true` |
 | `authorization_audit_logs` | PK `id` | `decision` ∈ `GRANTED \| DENIED`; append-only, with no index on `identity_id` or `created_at` |
 
-> ⚠️ **No migrations directory.** `npx prisma migrate deploy` on container start creates nothing. Generate and commit an initial migration with `npx prisma migrate dev --name init`. The Dockerfile also doesn't copy `.npmrc`, unlike the other NestJS services.
+Created by migration `20261001130000_init`, which also **seeds**:
+
+| Seeded | Values |
+|---|---|
+| Role `admin` (system, ID `00000000-0000-4000-9000-000000000001`) | holds the wildcard permission `*` (`*`/`*`) |
+| Identity permissions | `identity.read`, `identity.update`, `identity.delete`, `identity.suspend`, `identity.audit` |
+| Customer permissions | `customer.create`, `customer.read`, `customer.update`, `customer.delete`, `customer.manage` |
+
+Only `admin` is seeded as a role. Finer roles, for example a support role with `customer.read` and `identity.read`, can be created through the API. The Dockerfile doesn't copy `.npmrc`, unlike the other NestJS services.
 
 ---
 
 ## 6. Flows
+
+### Bootstrapping the first admin
+
+Nobody holds a role at first, and every role-granting API call needs the internal token, so the first admin is assigned directly in the database:
+
+```bash
+docker compose exec authorization-service node dist/cli/assign-role.js <identityId> [roleName=admin]
+```
+
+The command is idempotent; running it again for the same identity and role changes nothing.
 
 ### Bootstrapping RBAC and checking access
 
@@ -274,6 +299,8 @@ sequenceDiagram
 | `PORT` | no | `3002` | HTTP port |
 | `DATABASE_URL` | yes | – | Postgres connection string |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Comma-separated list of allowed origins |
+| `NODE_ENV` | no | – | `production` hides Swagger |
+| `INTERNAL_SERVICE_TOKEN` | **yes** | – | Required on every request except `/health`. If unset, every such request gets 401 and a warning is logged at startup. |
 | `JWT_SECRET`, `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
 ---
@@ -284,20 +311,27 @@ sequenceDiagram
 cd services/authorization-service
 npm install
 npx prisma generate
-npx prisma db push            # until a migration is committed
-npm run start:dev             # http://localhost:3002/api/authorization/docs
+npx prisma migrate deploy     # creates the tables and seeds admin + permissions
+INTERNAL_SERVICE_TOKEN=dev-internal npm run start:dev   # http://localhost:3002/api/authorization/docs
+node dist/cli/assign-role.js <identityId>               # after npm run build
 ```
 
-**Tests:** none exist yet. `test.text` in this folder is a directory-tree dump, not a test.
+**Tests:** `npm test` runs 8 Jest unit tests in `test/`. They cover:
+
+- the global internal-token guard, with health public and fail-closed behavior when the token isn't configured
+- `checkAccess`: deny by default, exact matches, the `*/*` admin wildcard and per-resource wildcards, with audit rows written
+- protection of the seeded `admin` system role
+
+`test.text` in this folder is a directory-tree dump, not a test.
 
 ---
 
 ## 9. Known limitations and follow-ups
 
-- **The admin API is unauthenticated.** Anyone who can reach the service can grant themselves any role. Add JWT auth plus a self-check, for example requiring `authorization.manage`.
-- There's no gateway route, and no other service calls `/authorize` yet.
+- The admin API trusts any holder of `INTERNAL_SERVICE_TOKEN`. It doesn't know which person is acting, so `assignedBy` comes from the request body. A per-admin check (for example `authorization.manage`) would need the caller's JWT.
+- The validator only accepts version-4 UUIDs as `identityId`. Callers treat its 400 as "deny".
 - `evaluatePolicy` isn't exposed, and `conditions` and `context` are ignored, so ABAC isn't functional.
 - Nothing caches decisions. Every check is a 4-table join plus an audit insert, so it will need caching (for example in Redis) at scale.
 - `authorization_audit_logs` has no indexes and no retention policy.
 - `assignRoleToUser` doesn't check that the identity exists in identity-service.
-- There are no migrations and no tests.
+- Only the decision logic and the guard have unit tests. CRUD services and policy evaluation don't.

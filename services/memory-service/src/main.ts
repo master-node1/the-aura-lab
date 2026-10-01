@@ -9,17 +9,19 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
-  const config = new DocumentBuilder()
-    .setTitle('TheAuraLab — Memory Service')
-    .setDescription('Long-term memory (Postgres), short-term memory (Redis), and semantic search (ChromaDB).')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('memory')
-    .build();
-  SwaggerModule.setup('api/memory/docs', app, SwaggerModule.createDocument(app, config));
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('TheAuraLab — Memory Service')
+      .setDescription('Long-term memory (Postgres), short-term memory (Redis), and semantic search (ChromaDB).')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('memory')
+      .build();
+    SwaggerModule.setup('api/memory/docs', app, SwaggerModule.createDocument(app, config));
+  }
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(`Memory service running on port ${process.env.PORT ?? 3000}`);
-  console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/memory/docs`);
+  if (process.env.NODE_ENV !== 'production') console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/memory/docs`);
 }
 bootstrap();

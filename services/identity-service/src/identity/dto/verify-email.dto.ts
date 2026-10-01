@@ -1,8 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { IsString, Length } from 'class-validator';
 
 export class VerifyEmailDto {
-  @ApiProperty({ example: 'abc123token', description: 'Email verification token' })
+  @ApiProperty({ example: 'k3J9…', description: 'One-time token from the verification email link' })
   @IsString()
+  @Length(16, 128)
   token!: string;
 }

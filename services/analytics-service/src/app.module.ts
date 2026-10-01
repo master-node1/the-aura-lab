@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from './prisma.service';
 import { AnalyticsController } from './analytics.controller';
+import { HealthController } from './health.controller';
 import { AnalyticsService } from './analytics.service';
 import { JwtStrategy } from './jwt.strategy';
 
@@ -18,7 +19,7 @@ import { JwtStrategy } from './jwt.strategy';
       }),
     }),
   ],
-  controllers: [AnalyticsController],
+  controllers: [HealthController, AnalyticsController],
   providers: [PrismaService, AnalyticsService, JwtStrategy],
 })
 export class AppModule {}

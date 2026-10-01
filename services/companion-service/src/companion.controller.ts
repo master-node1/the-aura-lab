@@ -45,9 +45,4 @@ export class CompanionController {
     });
     return { message: 'Short-term memory cleared' };
   }
-
-  @Get('health')
-  health() {
-    return { status: 'ok', service: 'companion-service' };
-  }
 }
