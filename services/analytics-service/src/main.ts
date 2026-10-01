@@ -9,17 +9,19 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
-  const config = new DocumentBuilder()
-    .setTitle('TheAuraLab — Analytics Service')
-    .setDescription('Read-only dashboard stats: emotion trends, conversation metrics, memory statistics.')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('analytics')
-    .build();
-  SwaggerModule.setup('api/analytics/docs', app, SwaggerModule.createDocument(app, config));
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('TheAuraLab — Analytics Service')
+      .setDescription('Read-only dashboard stats: emotion trends, conversation metrics, memory statistics.')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('analytics')
+      .build();
+    SwaggerModule.setup('api/analytics/docs', app, SwaggerModule.createDocument(app, config));
+  }
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(`Analytics service running on port ${process.env.PORT ?? 3000}`);
-  console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/analytics/docs`);
+  if (process.env.NODE_ENV !== 'production') console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/analytics/docs`);
 }
 bootstrap();

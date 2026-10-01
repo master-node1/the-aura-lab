@@ -93,7 +93,7 @@ export class CustomerService {
 
   async findProfile(identityId: string) {
     if (!identityId || !isUUID(identityId)) {
-      throw new BadRequestException('A valid x-identity-id header is required');
+      throw new BadRequestException('The access token does not contain a valid user ID');
     }
     const customer = await this.prisma.customer.findFirst({
       where: { identityId, deletedAt: null },

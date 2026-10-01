@@ -10,9 +10,11 @@ from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from config import settings
 from pipeline import run_pipeline
+from services.vector_store import vector_store
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 AI_PROCESS_CHANNEL = "TheAuraLab:ai:process"
 AI_RESPONSE_CHANNEL = "TheAuraLab:ai:response"
+HEALTH_CHECK_TIMEOUT_SECONDS = 2.0
+
+_health_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
 
 
 async def redis_worker():
@@ -59,6 +64,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="TheAuraLab AI Service", lifespan=lifespan)
 
 
+async def _probe(name: str, check) -> str:
+    try:
+        await asyncio.wait_for(check(), HEALTH_CHECK_TIMEOUT_SECONDS)
+        return "up"
+    except Exception as e:
+        logger.warning(f"Health check {name!r} failed: {e!r}")
+        return "down"
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "ai-service"}
+    """Unauthenticated health check that verifies Redis and ChromaDB connectivity."""
+    checks = {
+        "redis": await _probe("redis", _health_redis.ping),
+        # The Chroma client is synchronous, so run its heartbeat off the event loop.
+        "chromadb": await _probe("chromadb", lambda: asyncio.to_thread(vector_store.client.heartbeat)),
+    }
+    healthy = all(status == "up" for status in checks.values())
+    body = {"status": "ok" if healthy else "error", "service": "ai-service", "checks": checks}
+    return body if healthy else JSONResponse(status_code=503, content=body)

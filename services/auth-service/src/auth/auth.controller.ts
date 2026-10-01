@@ -47,15 +47,11 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiOperation({ summary: 'Logout (client discards tokens)' })
   logout() {
     return { message: 'Logged out successfully' };
-  }
-
-  @Get('health')
-  @ApiOperation({ summary: 'Service health check' })
-  health() {
-    return { status: 'ok', service: 'auth-service' };
   }
 }

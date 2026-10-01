@@ -41,9 +41,4 @@ export class ConversationController {
   ) {
     return this.conv.getMessages(id, req.user.sub, +skip, +limit);
   }
-
-  @Get('health')
-  health() {
-    return { status: 'ok', service: 'chat-service' };
-  }
 }

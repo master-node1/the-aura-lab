@@ -5,11 +5,11 @@
 
 | | |
 |---|---|
-| **Stack** | NestJS 10, Prisma 6, PostgreSQL |
+| **Stack** | NestJS 10, Prisma 6, PostgreSQL, Passport-JWT |
 | **Port** | `3000` |
 | **Route prefix** | `/api/customer` |
 | **Gateway route** | `/api/customer/*` |
-| **Swagger** | `/api/customer/docs` |
+| **Swagger** | `/api/customer/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `customers`, `customer_addresses`, `customer_preferences`, `customer_audit_logs`, `customer_events` |
 | **Depends on** | PostgreSQL |
 | **Related** | `customers.identity_id` holds an ID from [identity-service](../identity-service/README.md) (no foreign key) |
@@ -18,9 +18,10 @@
 
 ## 1. Responsibilities
 
+- Require a valid access JWT on every endpoint except `/health`.
 - Create a customer profile linked to an identity, one customer per identity.
 - Search customers by name, email or mobile number, optionally filtered by status, with pagination.
-- Read and update a profile by customer ID or by the caller's identity (`x-identity-id` header).
+- Read and update a profile by customer ID, or the caller's own profile, using the user ID taken from the JWT (`x-user-id`).
 - Soft-delete customers and change their status (`ACTIVE`, `BLOCKED`, `SUSPENDED`).
 - Manage addresses, with **at most one default shipping and one default billing address** per customer.
 - Manage marketing and notification preferences.
@@ -46,6 +47,8 @@ flowchart LR
 
 - **Transactional outbox.** Every write, along with its audit row and event row, is committed atomically through `recordCustomerChange()`. Events start with `published_at = NULL` and `attempts = 0`. **No relay or publisher exists yet** to deliver them.
 - **Soft delete.** `deleted_at` is set and `status` becomes `DELETED`. Every read filters on `deleted_at IS NULL`.
+- **Default-deny authentication.** A global `JwtAuthGuard` (`APP_GUARD`) requires a Bearer access token (signed with `JWT_SECRET`, `type: access`) on every route. Only routes marked `@Public()` skip it, which today is `/health`.
+- **Trusted user ID header.** A middleware in `main.ts` deletes any client-supplied `x-user-id`. The JWT strategy then sets `x-user-id` to the token's `sub`, so `/customers/profile` can only act on the caller's own profile.
 
 ---
 
@@ -54,8 +57,12 @@ flowchart LR
 ```text
 src/
 ├── main.ts                       # prefix api/customer, ValidationPipe, CORS, Swagger
-├── app.module.ts                 # Config, Prisma, CustomerModule, HealthController
-├── health.controller.ts          # GET /health (unguarded)
+├── app.module.ts                 # Config, Passport, Prisma, CustomerModule; JwtStrategy + global JwtAuthGuard
+├── health.controller.ts          # GET /health (public): SELECT 1 with a 2 s timeout, 503 when down
+├── auth/
+│   ├── public.decorator.ts       # @Public() → skips the global guard
+│   ├── jwt-auth.guard.ts         # global guard (AuthGuard('jwt') + @Public check)
+│   └── jwt.strategy.ts           # verifies access token, sets x-user-id
 ├── prisma/                       # global PrismaService
 └── customer/
     ├── customer.module.ts
@@ -117,24 +124,26 @@ The audit `action` matches the event type, except status changes, which are alwa
 
 | Case | HTTP |
 |---|---|
-| DTO, query or UUID validation failure; DELETED via PATCH; missing or invalid `x-identity-id` | 400 |
+| DTO, query or UUID validation failure; DELETED via PATCH; token `sub` isn't a UUID (`/profile`) | 400 |
+| Missing, expired or invalid access token, or a refresh token used instead of an access token | 401 |
 | Customer, profile or address not found (or soft-deleted) | 404 |
 | Unique violation on create or update; deleting a default address | 409 |
 | Any other Prisma error | 500 (rethrown unchanged) |
+| `/health` with the database unreachable | 503 |
 
 ---
 
 ## 4. API
 
-All paths are relative to `/api/customer`. **No authentication is enforced.** The `/profile` endpoints trust the `x-identity-id` header.
+All paths are relative to `/api/customer`. **Every endpoint except `/health` requires** `Authorization: Bearer <access token>` and returns 401 without one. The `/profile` endpoints use the user ID from the token; the old `x-identity-id` header is ignored.
 
 | Method | Path | Body or query | Success | Errors |
 |---|---|---|---|---|
-| GET | `/health` | – | 200 `{status, service}` | – |
+| GET | `/health` (public) | – | 200 `{ status, service, checks: { database: 'up' } }` | 503 when the database is down |
 | POST | `/customers` | `CreateCustomerDto` | 201 customer | 400, 409 |
 | GET | `/customers` | `q, status, page, pageSize` | 200 `{ data[], page, pageSize, total }` | 400 |
-| GET | `/customers/profile` | header `x-identity-id` | 200 customer with `addresses` and `preferences` | 400, 404 |
-| PUT | `/customers/profile` | header + `UpdateCustomerDto` | 200 customer | 400, 404, 409 |
+| GET | `/customers/profile` | – (identity from JWT) | 200 customer with `addresses` and `preferences` | 400, 404 |
+| PUT | `/customers/profile` | `UpdateCustomerDto` (identity from JWT) | 200 customer | 400, 404, 409 |
 | GET | `/customers/:customerId` | – | 200 customer with `addresses` and `preferences` | 400, 404 |
 | PUT | `/customers/:customerId` | `UpdateCustomerDto` | 200 customer | 400, 404, 409 |
 | DELETE | `/customers/:customerId` | – | 204 | 400, 404 |
@@ -148,6 +157,7 @@ All paths are relative to `/api/customer`. **No authentication is enforced.** Th
 
 ```http
 POST /api/customer/customers
+Authorization: Bearer <access token>
 Content-Type: application/json
 
 { "identityId": "3b0f3f9a-1f7e-4e0f-9a3b-2a1b4c5d6e7f", "email": "Alex@Example.com",
@@ -156,6 +166,7 @@ Content-Type: application/json
 
 ```http
 POST /api/customer/customers/{customerId}/addresses
+Authorization: Bearer <access token>
 Content-Type: application/json
 
 { "recipientName": "Alex Morgan", "line1": "100 Market Street", "city": "San Francisco",
@@ -328,8 +339,10 @@ stateDiagram-v2
 |---|---|---|---|
 | `PORT` | no | `3000` | HTTP port |
 | `DATABASE_URL` | yes | – | Postgres connection string |
+| `JWT_SECRET` | yes | `changeme` (fallback in code; never use it outside local development) | Verifies access tokens; must match auth-service |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Allowed origins |
-| `JWT_SECRET`, `REDIS_URL` | – | – | Passed in by compose but **not used** |
+| `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
 ---
 
@@ -344,13 +357,19 @@ npm run start:dev                 # http://localhost:3000/api/customer/docs
 
 The Docker image is multi-stage, runs as the non-root `node` user and prunes dev dependencies.
 
-**Tests:** none exist yet.
+**Tests:** there's no automated test suite yet. JWT protection was checked with a smoke script against a real Postgres. It covered:
+
+- 401 on search, create and profile without a token, even with spoofed `x-identity-id` or `x-user-id` headers
+- `/profile` returning the caller's own record even when a different `x-user-id` is sent
+- 400 for a non-UUID `sub`
+- public health, and 503 with Postgres stopped
 
 ---
 
 ## 9. Known limitations and follow-ups
 
-- **No authentication or authorization.** Any caller can search, read or modify any customer. The `/profile` endpoints trust a client-supplied `x-identity-id` header, which is only safe behind a gateway that sets it from a verified JWT.
+- **Authentication only, no authorization.** Any logged-in user can search, read or modify **any** customer through the `/customers/:customerId` routes and create a customer for any `identityId`. Only `/profile` is restricted to the caller. Next step: limit by-ID routes to admins (for example via authorization-service) or to the owner.
+- `/profile` assumes the JWT `sub` equals the customer's `identityId`. Today auth-service issues `users.id` as `sub`, so customers must be created with that ID until auth and identity are linked.
 - The **outbox has no relay**, so `customer_events` grows without ever being published.
 - `prisma` is a devDependency and `npm prune --omit=dev` removes it, so `npx prisma migrate deploy` at container start has to download the CLI at runtime. Move `prisma` to `dependencies`, or run migrations in a separate job.
 - `changedBy` is never set on audit rows.

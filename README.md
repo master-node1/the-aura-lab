@@ -79,7 +79,7 @@ docker compose up -d --build
 curl http://localhost:8001/health
 ```
 
-Swagger UI for each NestJS service is at `/api/<service>/docs`. The [service index](services/README.md#service-index) lists the ports and routes, and [known issues](services/README.md#cross-cutting-known-issues) lists the problems that currently affect startup.
+Swagger UI for each NestJS service is at `/api/<service>/docs` when `NODE_ENV` isn't `production` (compose defaults to `production`, so set `NODE_ENV=development` in `.env` to see it). The [service index](services/README.md#service-index) lists the ports and routes, and [known issues](services/README.md#cross-cutting-known-issues) lists the problems that currently affect startup.
 
 ## Local quality checks
 

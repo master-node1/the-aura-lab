@@ -9,7 +9,7 @@
 | **Port** | `3000` |
 | **Route prefix** | `/api/memory` |
 | **Gateway route** | `/api/memory/*` |
-| **Swagger** | `/api/memory/docs` |
+| **Swagger** | `/api/memory/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `memories` |
 | **Redis keys** | `TheAuraLab:st:{userId}` (a list, shared with ai-service) |
 | **Depends on** | PostgreSQL, Redis |
@@ -51,6 +51,7 @@ src/
 ├── app.module.ts           # Config, Prisma, Redis, MemoryModule
 ├── prisma/                 # global PrismaService
 ├── redis/redis.module.ts   # REDIS_CLIENT provider
+├── health/health.controller.ts # public; Postgres SELECT 1 + Redis PING, 503 when down
 └── memory/
     ├── memory.module.ts    # Passport + JwtModule
     ├── memory.controller.ts# class-level AuthGuard('jwt')
@@ -106,7 +107,7 @@ All paths are relative to `/api/memory`, and **every route requires** `Authoriza
 | PATCH | `/:id` | partial memory | 200 memory | 401, 404 |
 | DELETE | `/:id` | – | 204 | 401, 404 |
 
-> ⚠️ **There is no `/health` route.** `GET /api/memory/health` matches `GET /:id`, which is behind the JWT guard and returns 401. The Docker healthcheck therefore fails, which blocks `ai-service` and `api-gateway`, since both use `depends_on: service_healthy`. Add an unguarded `HealthController`.
+`GET /health` is public and served by a separate `HealthController`, registered in `AppModule` so it's matched before the guarded `GET /:id`. It runs `SELECT 1` against Postgres and `PING` against Redis, each with a 2-second timeout, and returns 200 `{ status: 'ok', service, checks: { database: 'up', redis: 'up' } }`; 503 with the failed check marked `down`.
 
 ```http
 POST /api/memory
@@ -209,6 +210,7 @@ sequenceDiagram
 | `REDIS_URL` | yes | `redis://localhost:6379` | Short-term store |
 | `JWT_SECRET` | yes | `changeme` | Verifies access tokens |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Allowed origins |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 
 ---
 
@@ -227,7 +229,6 @@ npm run start:dev               # http://localhost:3000/api/memory/docs
 
 ## 9. Known limitations and follow-ups
 
-- **There's no health endpoint**, so the Docker healthcheck fails (see [section 4](#4-api)).
 - **Memories extracted by the AI never reach this table.** ai-service writes them only to ChromaDB, so `memories`, and therefore the analytics dashboards, only contain memories that users create by hand.
 - The `TheAuraLab:memory:save` channel is declared in `services/shared` but nothing publishes or subscribes to it.
 - `PATCH /:id` and `POST /short-term` bodies aren't validated.

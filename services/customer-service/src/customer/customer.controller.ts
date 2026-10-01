@@ -14,14 +14,16 @@ import {
   Query,
 } from '@nestjs/common';
 import {
-  ApiHeader,
+  ApiBearerAuth,
   ApiNoContentResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { CustomerStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { USER_ID_HEADER } from '../auth/jwt.strategy';
 import { CustomerService } from './customer.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -54,6 +56,8 @@ class CustomerSearchQuery {
 }
 
 @ApiTags('customers')
+@ApiBearerAuth()
+@ApiResponse({ status: 401, description: 'Missing or invalid access token' })
 @Controller('customers')
 export class CustomerController {
   constructor(private readonly customers: CustomerService) {}
@@ -71,17 +75,15 @@ export class CustomerController {
   }
 
   @Get('profile')
-  @ApiHeader({ name: 'x-identity-id', required: true })
-  @ApiOperation({ summary: 'Get the profile for the authenticated identity' })
-  getProfile(@Headers('x-identity-id') identityId: string) {
+  @ApiOperation({ summary: 'Get the profile for the authenticated user (identity ID from the JWT)' })
+  getProfile(@Headers(USER_ID_HEADER) identityId: string) {
     return this.customers.findProfile(identityId);
   }
 
   @Put('profile')
-  @ApiHeader({ name: 'x-identity-id', required: true })
-  @ApiOperation({ summary: 'Update the profile for the authenticated identity' })
+  @ApiOperation({ summary: 'Update the profile for the authenticated user (identity ID from the JWT)' })
   updateProfile(
-    @Headers('x-identity-id') identityId: string,
+    @Headers(USER_ID_HEADER) identityId: string,
     @Body() dto: UpdateCustomerDto,
   ) {
     return this.customers.updateProfile(identityId, dto);

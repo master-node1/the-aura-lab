@@ -9,7 +9,7 @@
 | **Port** | `3000` |
 | **Route prefix** | `/api/auth` |
 | **Gateway route** | `http://<gateway>:8001/api/auth/*` |
-| **Swagger** | `/api/auth/docs` |
+| **Swagger** | `/api/auth/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `users` |
 | **Depends on** | PostgreSQL |
 | **Used by** | Frontend; every service that validates JWTs (they share `JWT_SECRET`) |
@@ -51,7 +51,8 @@ flowchart LR
 ```text
 src/
 ├── main.ts                 # bootstrap: prefix api/auth, ValidationPipe, CORS, Swagger
-├── app.module.ts           # ConfigModule (global), PrismaModule, AuthModule
+├── app.module.ts           # ConfigModule (global), PrismaModule, AuthModule, HealthController
+├── health/health.controller.ts # public; SELECT 1 with a 2 s timeout, 503 when down
 ├── prisma/
 │   ├── prisma.module.ts    # @Global, exports PrismaService
 │   └── prisma.service.ts   # PrismaClient with connect/disconnect lifecycle hooks
@@ -102,7 +103,7 @@ The global `ValidationPipe({ whitelist: true, transform: true })` strips propert
 
    Both tokens are signed with `JWT_SECRET` using HS256, the `@nestjs/jwt` default.
 6. A refresh succeeds only for a valid token whose `type` is `refresh` and whose user still exists. Every failure returns `401 Invalid refresh token`.
-7. Logout is client-side only. The endpoint returns a message and does not revoke anything.
+7. Logout requires a valid access token but is otherwise client-side only. The endpoint returns a message and doesn't revoke anything.
 
 ### 3.4 Error handling
 
@@ -125,8 +126,8 @@ All paths are relative to `/api/auth`.
 | POST | `/login` | – | Log in and get tokens | 200 token pair | 400, 401 |
 | POST | `/refresh?refresh_token=<jwt>` | – | Exchange a refresh token for a new pair | 200 token pair | 401 |
 | GET | `/me` | Bearer (access) | Current user profile | 200 user | 401, 404 |
-| POST | `/logout` | – (Bearer documented, not enforced) | No-op | 200 `{ message }` | – |
-| GET | `/health` | – | Liveness check | 200 `{ status: 'ok', service: 'auth-service' }` | – |
+| POST | `/logout` | Bearer (access) | Acknowledge logout; tokens aren't revoked | 200 `{ message }` | 401 |
+| GET | `/health` | – | Checks database connectivity (`SELECT 1`, 2 s timeout) | 200 `{ status: 'ok', service, checks: { database: 'up' } }`; 503 with the failed check marked `down` | – |
 
 ### Examples
 
@@ -254,6 +255,7 @@ sequenceDiagram
 | `JWT_ACCESS_EXPIRE_MINUTES` | no | `30` | Access token lifetime |
 | `JWT_REFRESH_EXPIRE_DAYS` | no | `7` | Refresh token lifetime |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Comma-separated list of allowed origins |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 | `JWT_REFRESH_SECRET` | – | – | Passed in by compose but **not read by the code** |
 | `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
@@ -280,7 +282,7 @@ With Docker: `docker compose up -d --build auth-service`.
 
 - The refresh token is signed with the same secret as the access token, and `JWT_REFRESH_SECRET` is unused.
 - The refresh token travels as a **query parameter** (`?refresh_token=`), so it can end up in proxy and access logs. A request body or an HttpOnly cookie would be safer.
-- There is no token revocation or rotation, and logout is a no-op.
+- There is no token revocation or rotation. Logout requires a token but doesn't invalidate it.
 - There is no rate limiting or brute-force protection on `/login`.
 - The `changeme` fallback secret in code means a misconfigured deployment silently signs tokens with a known secret.
 - Logging uses `console.log` and is not structured.

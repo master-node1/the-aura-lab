@@ -26,9 +26,4 @@ export class AnalyticsController {
   memoryStats(@Request() req: any) {
     return this.analytics.memoryStats(req.user.sub);
   }
-
-  @Get('health')
-  health() {
-    return { status: 'ok', service: 'analytics-service' };
-  }
 }

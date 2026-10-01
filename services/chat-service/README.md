@@ -9,7 +9,7 @@
 | **Port** | `3000` (HTTP and WebSocket) |
 | **Route prefix** | `/api/chat` (REST); `/socket.io/` (WebSocket) |
 | **Gateway routes** | `/api/chat/*` and `/socket.io/` (with WebSocket upgrade) |
-| **Swagger** | `/api/chat/docs` |
+| **Swagger** | `/api/chat/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `conversations`, `messages` |
 | **Reads tables** | `users` (raw SQL, owned by auth-service) |
 | **Redis** | publishes `TheAuraLab:ai:process`; subscribes to `TheAuraLab:ai:response` |
@@ -56,6 +56,7 @@ src/
 ├── prisma/                       # global PrismaService
 ├── redis/redis.module.ts         # REDIS_PUB and REDIS_SUB providers (ioredis)
 ├── gateway/chat.gateway.ts       # Socket.IO gateway
+├── health/health.controller.ts   # public; Postgres SELECT 1 + Redis PING, 503 when down
 └── conversation/
     ├── conversation.module.ts    # Passport + JwtModule
     ├── conversation.controller.ts# REST, class-level AuthGuard('jwt')
@@ -120,9 +121,9 @@ All paths are relative to `/api/chat`. All except `/health` require `Authorizati
 | GET | `/conversations/:id` | – | 200 conversation with messages | 401, 404 |
 | DELETE | `/conversations/:id` | – | 204 | 401, 404 |
 | GET | `/conversations/:id/messages` | `skip` (default 0), `limit` (default 100) | 200 messages | 401, 404 |
-| GET | `/health` | – | 200 `{status, service}`. **Also guarded by JWT**; see the note below. | 401 |
+| GET | `/health` (public) | – | 200 `{ status: 'ok', service, checks: { database: 'up', redis: 'up' } }`; 503 with the failed check marked `down` | – |
 
-> ⚠️ `@UseGuards(AuthGuard('jwt'))` sits on the controller class, so it covers `/health` too. Docker's `wget …/api/chat/health` healthcheck would then get `401` and fail. Move `health` to a separate, unguarded controller.
+`/health` lives in its own unguarded `HealthController`. It runs `SELECT 1` against Postgres and `PING` against Redis, each with a 2-second timeout.
 
 ---
 
@@ -215,6 +216,7 @@ flowchart TD
 | `JWT_SECRET` | yes | `changeme` | Verifies access tokens; must match auth-service |
 | `REDIS_URL` | yes | `redis://localhost:6379` | Pub/sub |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | REST CORS. The WebSocket gateway uses `origin: '*'`. |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 
 ---
 
@@ -246,7 +248,6 @@ s.emit('message', { messageId: 'm1', content: 'Hello!' });
   - WebSocket CORS is `*`.
   - The JWT travels in the query string, where access logs can capture it.
   - Incoming `content` has no length limit and no validation.
-- `/health` is behind the JWT guard (see [section 4](#4-rest-api)).
 - Assistant messages aren't persisted, and `message_count`, `emotion` and `summary` are never updated.
 - The service reads auth-service's `users` table with raw SQL, which couples the two schemas.
 - The in-memory socket map plus a Redis subscription on every instance means **no horizontal scaling**. Use `@socket.io/redis-adapter` and rooms per user to remove that limit.

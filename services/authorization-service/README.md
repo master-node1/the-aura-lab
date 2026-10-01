@@ -9,7 +9,7 @@
 | **Port** | `3002` |
 | **Route prefix** | `/api/authorization` |
 | **Gateway route** | **None.** nginx doesn't route to this service; reach it on the `backend` network or at `localhost:3002` |
-| **Swagger** | `/api/authorization/docs` |
+| **Swagger** | `/api/authorization/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | `roles`, `permissions`, `role_permissions`, `user_roles`, `policies`, `authorization_audit_logs` |
 | **Depends on** | PostgreSQL |
 | **Used by** | Nothing calls it yet. It's designed as a policy decision point for other services. |
@@ -55,7 +55,8 @@ src/
 ├── main.ts                    # prefix api/authorization, ValidationPipe, CORS, Swagger, port 3002
 ├── app.module.ts              # Config, Prisma, Roles, Permissions, Policies, Authorization modules
 ├── prisma/                    # global PrismaService
-├── roles/                     # RolesController (+ /health), RolesService, DTOs
+├── health/health.controller.ts # public; SELECT 1 with a 2 s timeout, 503 when down
+├── roles/                     # RolesController, RolesService, DTOs
 ├── permissions/               # PermissionsController, PermissionsService, DTOs
 ├── policies/                  # PoliciesController, PoliciesService, DTOs
 └── authorization/             # AuthorizationController, AuthorizationService, CheckAccessDto
@@ -117,7 +118,7 @@ All paths are relative to `/api/authorization`. **No endpoint is authenticated.*
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/health` | `{ status: 'ok', service: 'authorization-service' }` |
+| GET | `/health` | 200 `{ status: 'ok', service, checks: { database: 'up' } }`; 503 with the failed check marked `down` |
 
 ### Roles
 
@@ -274,6 +275,7 @@ sequenceDiagram
 | `PORT` | no | `3002` | HTTP port |
 | `DATABASE_URL` | yes | – | Postgres connection string |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Comma-separated list of allowed origins |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 | `JWT_SECRET`, `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
 ---

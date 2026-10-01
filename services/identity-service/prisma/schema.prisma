@@ -28,8 +28,27 @@ model Identity {
 
   providers          IdentityProvider[]
   auditLogs          IdentityAuditLog[]
+  verifications      IdentityVerification[]
 
   @@map("identities")
+}
+
+// One-time email tokens and mobile OTPs. Only a SHA-256 hash of the code is stored.
+model IdentityVerification {
+  id          String              @id @default(uuid()) @db.Uuid
+  identityId  String              @map("identity_id") @db.Uuid
+  channel     VerificationChannel
+  codeHash    String              @map("code_hash")
+  expiresAt   DateTime            @map("expires_at")
+  attempts    Int                 @default(0)
+  consumedAt  DateTime?           @map("consumed_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  identity    Identity            @relation(fields: [identityId], references: [id])
+
+  @@index([identityId, channel, createdAt])
+  @@index([codeHash])
+  @@map("identity_verifications")
 }
 
 model IdentityProvider {
@@ -57,6 +76,11 @@ model IdentityAuditLog {
   identity    Identity @relation(fields: [identityId], references: [id])
 
   @@map("identity_audit_logs")
+}
+
+enum VerificationChannel {
+  EMAIL
+  MOBILE
 }
 
 enum IdentityStatus {

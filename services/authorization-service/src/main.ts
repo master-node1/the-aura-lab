@@ -11,27 +11,29 @@ async function bootstrap() {
     origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'],
   });
 
-  const config = new DocumentBuilder()
-    .setTitle('Authorization Service')
-    .setDescription(
-      'Manages roles, permissions, policies and evaluates access decisions (RBAC + ABAC).',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('roles')
-    .addTag('permissions')
-    .addTag('policies')
-    .addTag('authorization')
-    .build();
-  SwaggerModule.setup(
-    'api/authorization/docs',
-    app,
-    SwaggerModule.createDocument(app, config),
-  );
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('Authorization Service')
+      .setDescription(
+        'Manages roles, permissions, policies and evaluates access decisions (RBAC + ABAC).',
+      )
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('roles')
+      .addTag('permissions')
+      .addTag('policies')
+      .addTag('authorization')
+      .build();
+    SwaggerModule.setup(
+      'api/authorization/docs',
+      app,
+      SwaggerModule.createDocument(app, config),
+    );
+  }
 
   const port = process.env.PORT ?? 3002;
   await app.listen(port);
   console.log(`Authorization service running on port ${port}`);
-  console.log(`Swagger docs: http://localhost:${port}/api/authorization/docs`);
+  if (process.env.NODE_ENV !== 'production') console.log(`Swagger docs: http://localhost:${port}/api/authorization/docs`);
 }
 bootstrap();

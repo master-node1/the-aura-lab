@@ -9,7 +9,7 @@
 | **Port** | `3000` |
 | **Route prefix** | `/api/analytics` |
 | **Gateway route** | `/api/analytics/*` |
-| **Swagger** | `/api/analytics/docs` |
+| **Swagger** | `/api/analytics/docs` (not served when `NODE_ENV=production`) |
 | **Owns tables** | none (read-only) |
 | **Reads tables** | `users`, `conversations`, `messages`, `memories` |
 | **Depends on** | PostgreSQL; the migrations of auth-service, chat-service and memory-service |
@@ -52,6 +52,7 @@ src/
 ├── app.module.ts            # Config, Passport, JwtModule; PrismaService, AnalyticsService, JwtStrategy
 ├── prisma.service.ts
 ├── jwt.strategy.ts
+├── health.controller.ts     # public; SELECT 1 with a 2 s timeout, 503 when down
 ├── analytics.controller.ts  # class-level AuthGuard('jwt')
 └── analytics.service.ts
 ```
@@ -79,7 +80,7 @@ All paths are relative to `/api/analytics`, and **every route requires** `Author
 | GET | `/emotions/trend` | `days` (default 7; not validated) | 200 trend | 401 |
 | GET | `/conversations/stats` | – | 200 stats | 401 |
 | GET | `/memories/stats` | – | 200 stats | 401 |
-| GET | `/health` | – | 200. **Also JWT-guarded.** | 401 |
+| GET | `/health` (public) | – | 200 `{ status: 'ok', service, checks: { database: 'up' } }`; 503 with the failed check marked `down` | – |
 
 Example response from `GET /api/analytics/emotions/trend?days=3`:
 
@@ -163,6 +164,7 @@ sequenceDiagram
 | `DATABASE_URL` | yes | – | Postgres connection string (ideally a read-only role) |
 | `JWT_SECRET` | yes | `changeme` | Verifies access tokens |
 | `CORS_ORIGINS` | no | `http://localhost:3000` | Allowed origins |
+| `NODE_ENV` | no | – | `production` hides Swagger |
 | `REDIS_URL` | – | – | Passed in by compose but **not used** |
 
 ---
@@ -182,7 +184,6 @@ npm run start:dev
 
 ## 9. Known limitations and follow-ups
 
-- `/health` is behind the JWT guard.
 - The numbers are misleading because of upstream gaps:
   - `averageMessagesPerConversation` is always 0, because chat-service never updates `message_count`.
   - `totalMessages` counts only user messages.

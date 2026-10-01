@@ -9,17 +9,19 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({ origin: process.env.CORS_ORIGINS?.split(',') ?? ['http://localhost:3000'] });
 
-  const config = new DocumentBuilder()
-    .setTitle('TheAuraLab — Auth Service')
-    .setDescription('Handles user registration, login, JWT tokens, and profile retrieval.')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('auth')
-    .build();
-  SwaggerModule.setup('api/auth/docs', app, SwaggerModule.createDocument(app, config));
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('TheAuraLab — Auth Service')
+      .setDescription('Handles user registration, login, JWT tokens, and profile retrieval.')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('auth')
+      .build();
+    SwaggerModule.setup('api/auth/docs', app, SwaggerModule.createDocument(app, config));
+  }
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(`Auth service running on port ${process.env.PORT ?? 3000}`);
-  console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/auth/docs`);
+  if (process.env.NODE_ENV !== 'production') console.log(`Swagger docs: http://localhost:${process.env.PORT ?? 3000}/api/auth/docs`);
 }
 bootstrap();
