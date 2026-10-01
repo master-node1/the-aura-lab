@@ -1,0 +1,365 @@
+# SoulSync Ecommerce - microservices orchestration.
+# Usage:
+#   cp .env.example .env
+#   docker compose up -d --build
+name: soulsync
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: soulsync-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-soulsync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-soulsync_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-soulsync}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [backend]
+    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-soulsync} -d ${POSTGRES_DB:-soulsync}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  redis:
+    image: redis:7-alpine
+    container_name: soulsync-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
+    volumes: [redis-data:/data]
+    networks: [backend]
+    ports: ["${REDIS_PORT:-6379}:6379"]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 10s, timeout: 3s, retries: 5, start_period: 5s}
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  chromadb:
+    image: chromadb/chroma:0.4.22
+    container_name: soulsync-chromadb
+    restart: unless-stopped
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: "/chroma/chroma"
+      ANONYMIZED_TELEMETRY: "False"
+    volumes: [chroma-data:/chroma/chroma]
+    networks: [backend]
+    ports: ["${CHROMA_PORT:-8000}:8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/api/v1/heartbeat || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: soulsync-auth-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:        { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/auth/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  identity-service:
+    build:
+      context: ./services/identity-service
+      dockerfile: Dockerfile
+    container_name: soulsync-identity-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3001"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/api/identity/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  authorization-service:
+    build:
+      context: ./services/authorization-service
+      dockerfile: Dockerfile
+    container_name: soulsync-authorization-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3002"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3002/api/authorization/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  chat-service:
+    build:
+      context: ./services/chat-service
+      dockerfile: Dockerfile
+    container_name: soulsync-chat-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:        { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/chat/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  memory-service:
+    build:
+      context: ./services/memory-service
+      dockerfile: Dockerfile
+    container_name: soulsync-memory-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:        { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/memory/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  companion-service:
+    build:
+      context: ./services/companion-service
+      dockerfile: Dockerfile
+    container_name: soulsync-companion-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/companion/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: soulsync-analytics-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/analytics/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  customer-service:
+    build:
+      context: ./services/customer-service
+      dockerfile: Dockerfile
+    container_name: soulsync-customer-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-soulsync}:${POSTGRES_PASSWORD:-soulsync_dev_pw}@postgres:5432/${POSTGRES_DB:-soulsync}
+      JWT_SECRET: ${SECRET_KEY:-change-me}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/customer/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  # ai-service: Python FastAPI worker; subscribes to Redis pub/sub channel
+  # soulsync:ai:process and publishes to soulsync:ai:response.
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: soulsync-ai
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4-turbo-preview}
+      REDIS_URL: redis://redis:6379
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+      MEMORY_SERVICE_URL: http://memory-service:3000
+      SHORT_TERM_MEMORY_TTL: "3600"
+      MAX_SHORT_TERM_MESSAGES: "50"
+      MEMORY_IMPORTANCE_THRESHOLD: "0.6"
+    networks:
+      - backend
+    depends_on:
+      redis:        { condition: service_healthy }
+      chromadb:     { condition: service_healthy }
+      memory-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+  api-gateway:
+    build: {context: ./services/api-gateway, dockerfile: Dockerfile}
+    container_name: soulsync-gateway
+    restart: unless-stopped
+    networks: [backend, edge]
+    ports: ["${API_GATEWAY_PORT:-8001}:8001"]
+    depends_on:
+      auth-service:          { condition: service_healthy }
+      chat-service:          { condition: service_healthy }
+      memory-service:        { condition: service_healthy }
+      companion-service:     { condition: service_healthy }
+      analytics-service:     { condition: service_healthy }
+      authorization-service: { condition: service_healthy }
+      identity-service:      { condition: service_healthy }
+      customer-service:      { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "${LOG_MAX_SIZE:-10m}", max-file: "${LOG_MAX_FILE:-3}" }
+
+networks:
+  backend: {driver: bridge, name: soulsync-backend}
+  edge:    {driver: bridge, name: soulsync-edge}
+
+volumes:
+  postgres-data: {name: soulsync-postgres-data}
+  redis-data:    {name: soulsync-redis-data}
+  chroma-data:   {name: soulsync-chroma-data}
