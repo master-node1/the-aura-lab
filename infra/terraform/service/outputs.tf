@@ -1,13 +1,18 @@
 output "image" {
   description = "Fully qualified image deployed."
-  value       = local.image
+  value       = "${local.image_repository}:${var.image_tag}"
 }
 
-output "deployment_name" {
-  value = kubernetes_deployment_v1.this.metadata[0].name
+output "helm_release" {
+  description = "Helm release name, chart version and revision."
+  value = {
+    name     = helm_release.this.name
+    chart    = "${helm_release.this.metadata[0].chart}-${helm_release.this.metadata[0].version}"
+    revision = helm_release.this.metadata[0].revision
+  }
 }
 
 output "service_dns" {
   description = "In-cluster DNS name of the service."
-  value       = "${kubernetes_service_v1.this.metadata[0].name}.${var.namespace}.svc.cluster.local:${var.container_port}"
+  value       = "${var.service_name}.${var.namespace}.svc.cluster.local:${var.container_port}"
 }

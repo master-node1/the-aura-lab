@@ -67,7 +67,8 @@ Each README covers HLD, LLD, API, DB schema, flows, configuration and limitation
 ├── .env.example              # root environment template (copy to .env)
 ├── services/                 # all microservices (see services/README.md)
 ├── docs/                     # product requirements, business rules, workflows
-├── infra/terraform/service/  # per-service EKS deployment stack (Terraform)
+├── infra/helm/aura-service/  # Helm chart used for every Kubernetes deployment
+├── infra/terraform/service/  # per-service EKS deployment stack (Terraform → Helm release)
 ├── .github/                  # CI/CD workflow and change-detection script
 ├── .githooks/                # pre-commit / pre-push quality hooks
 ├── eslint.config.mjs         # ESLint config for all TypeScript services

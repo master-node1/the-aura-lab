@@ -52,6 +52,7 @@ env:
   PYTHON_VERSION: "3.11"
   TF_VERSION: "1.13.3"
   TF_DIR: infra/terraform/service
+  HELM_VERSION: "v3.19.0"
   ECR_PREFIX: the-aura-lab
 
 jobs:
@@ -468,6 +469,13 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Helm lint
+        run: helm lint ../../helm/aura-service --strict --set image.repository=lint/lint,image.tag=lint
 
       - name: Terraform fmt
         run: terraform fmt -check -recursive

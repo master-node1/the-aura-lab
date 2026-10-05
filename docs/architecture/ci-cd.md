@@ -3,6 +3,7 @@
 Workflow: [`.github/workflows/ci-cd.yml`](../../.github/workflows/ci-cd.yml)
 Change detection: [`.github/scripts/detect-changed-services.sh`](../../.github/scripts/detect-changed-services.sh)
 Terraform stack: [`infra/terraform/service/`](../../infra/terraform/service)
+Helm chart: [`infra/helm/aura-service/`](../../infra/helm/aura-service)
 
 ## 1. What runs when
 
@@ -34,7 +35,7 @@ A service is any `services/<name>/` folder with a `Dockerfile`. Each one must ha
 |---|---|
 | `services/<name>/**` | `<name>` |
 | `infra/terraform/service/services/<name>.tfvars.json` | `<name>` |
-| `infra/terraform/service/*.tf`, `infra/terraform/service/environments/**` | all |
+| `infra/terraform/service/*.tf`, `infra/terraform/service/environments/**`, `infra/helm/**` | all |
 | `.github/workflows/ci-cd.yml`, `.github/scripts/**` | all |
 | Anything else (`docs/`, `services/shared/`, …) | none |
 
@@ -94,9 +95,11 @@ terraform plan \
   -var=service_name=<service> -var=image_tag=<sha>
 ```
 
-It manages these resources, all named after the service so in-cluster DNS matches docker-compose (for example `http://identity-service:3001`):
+**Kubernetes objects are always deployed with Helm.** The stack contains one `helm_release` per service. It installs the shared chart [`infra/helm/aura-service`](../../infra/helm/aura-service) with values that Terraform renders from the two variable files. Terraform still owns plan, apply, destroy and state; Helm owns the Kubernetes objects. The release uses `atomic` and `wait`, so a rollout that doesn't become healthy within 10 minutes is rolled back to the previous Helm revision and the apply fails. Don't add raw manifests or `kubernetes_*` workload resources: extend the chart instead.
 
-| Resource | Notes |
+The chart creates these objects, all named after the service so in-cluster DNS matches docker-compose (for example `http://identity-service:3001`):
+
+| Object | Notes |
 |---|---|
 | `Deployment` | Rolling update (`maxUnavailable 0`); startup, readiness and liveness probes on `health_check_path`; resource requests and limits; `allowPrivilegeEscalation=false`; waits for the rollout. Replicas are owned by the HPA. |
 | `Service` | `ClusterIP`. `api-gateway` uses `LoadBalancer` with AWS Load Balancer Controller NLB annotations. |
@@ -111,6 +114,17 @@ It manages these resources, all named after the service so in-cluster DNS matche
 2. Add `infra/terraform/service/services/<name>.tfvars.json` with at least `container_port` and `health_check_path`.
 3. Create the `<name>-secrets` Secret in each environment's namespace.
 
+### Changing the chart
+
+Edit `infra/helm/aura-service`, bump `version` in `Chart.yaml`, and check it renders:
+
+```sh
+helm lint infra/helm/aura-service --strict --set image.repository=x/y,image.tag=t
+helm template auth-service infra/helm/aura-service --set image.repository=x/y,image.tag=t
+```
+
+`values.schema.json` validates the values Terraform passes. A chart change selects every service, so the next plan shows the diff for all of them.
+
 ## 5. One-time setup
 
 | Item | Where | Purpose |
@@ -120,7 +134,7 @@ It manages these resources, all named after the service so in-cluster DNS matche
 | AWS Load Balancer Controller and metrics-server | each cluster | Gateway NLB and HPA metrics |
 | RDS Postgres, ElastiCache Redis, ChromaDB | AWS / cluster | Referenced from the `<service>-secrets` values and `CHROMA_HOST` |
 | S3 state bucket (versioned, encrypted) | AWS | Repository variable `TF_STATE_BUCKET` |
-| IAM role trusted by GitHub OIDC | AWS | Secret `AWS_ROLE_ARN`. Needs ECR push/create, S3 state read/write and `eks:DescribeCluster`, and must be mapped to a Kubernetes RBAC identity (EKS access entry) that can manage Deployments, Services, HPAs and PDBs in the namespace |
+| IAM role trusted by GitHub OIDC | AWS | Secret `AWS_ROLE_ARN`. Needs ECR push/create, S3 state read/write and `eks:DescribeCluster`, and must be mapped to a Kubernetes RBAC identity (EKS access entry) that can manage Deployments, Services, HPAs, PDBs and Secrets (Helm stores release history as Secrets) in the namespace |
 | Read-only plan role (optional) | AWS | Secret `AWS_PLAN_ROLE_ARN`, used for PR plans. Falls back to `AWS_ROLE_ARN` |
 | GitHub Environments `dev`, `staging`, `prod` | repo settings | Add required reviewers to `staging` and `prod` to gate apply and destroy |
 
@@ -131,11 +145,11 @@ Region comes from `aws_region` in the environment tfvars file. It is used for EC
 - **Redeploy a service without a code change:** run the workflow manually with `action=apply`, the environment, and `services=<name>`.
 - **Deploy:** pushes to `main` only plan. To deploy, run the workflow manually with `action=apply`, the environment, and `services=<list|all>` (empty = services changed in the latest commit).
 - **Roll back:** revert the commit on `main`, then run a manual `apply` for the affected service.
-- **Tear down:** run manually with `action=destroy`, `services=<list|all>` and `confirm_destroy=<env>`. Only Kubernetes objects are destroyed. ECR images and state files are kept.
+- **Tear down:** run manually with `action=destroy`, `services=<list|all>` and `confirm_destroy=<env>`. The Helm release (and so its Kubernetes objects) is uninstalled. ECR images and state files are kept.
 
 ## 7. Known limitations
 
-- `.terraform.lock.hcl` isn't committed yet, so provider versions float within `~> 5.0` (aws) and `~> 2.30` (kubernetes). Commit one generated with `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`.
+- `.terraform.lock.hcl` isn't committed yet, so provider versions float within `~> 5.0` (aws) and `~> 2.17` (helm). Commit one generated with `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`.
 - Only `auth-, identity-, customer-` and `authorization-service` have Jest unit tests. No service defines `test:integration` yet, so integration coverage is the container smoke test.
 - A manual `apply` gates on the whole run. If any selected service fails its tests, nothing is built or deployed, including services that passed.
 - Every deploy, including `dev`, is manual (workflow dispatch). It builds the image for the current `main` SHA, or reuses it if that tag is already in ECR.

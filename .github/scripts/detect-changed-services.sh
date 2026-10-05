@@ -32,6 +32,7 @@ GLOBAL_PATTERNS=(
   '^\.github/scripts/'
   '^infra/terraform/service/[^/]+\.tf$'
   '^infra/terraform/service/environments/'
+  '^infra/helm/'
 )
 
 log() { echo "$*" >&2; }

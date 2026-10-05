@@ -37,6 +37,7 @@ Full detail: [`docs/ai/master-prompt.md`](docs/ai/master-prompt.md). This file i
 ### Conventions
 - <naming, folder layout, error-handling style, logging library, DI approach>
 - <branching / commit message format>
+- Kubernetes deployments always use the Helm chart in `infra/helm/aura-service`, installed by Terraform `helm_release` (`infra/terraform/service`). Never add raw manifests or `kubernetes_*` workload resources; extend the chart instead. See `docs/architecture/ci-cd.md`.
 
 ---
 
