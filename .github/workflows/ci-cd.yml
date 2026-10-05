@@ -284,9 +284,14 @@ jobs:
       - name: Start ChromaDB
         if: matrix.runtime == 'python'
         run: |
+          # Bypass the image entrypoint: it force-reinstalls chroma-hnswlib at
+          # startup, which now pulls NumPy 2 and breaks chromadb 0.4.22
+          # ("np.float_ was removed"). Run the server on the image's pinned deps.
           docker run -d --name chromadb -p 8000:8000 \
             -e IS_PERSISTENT=FALSE -e ANONYMIZED_TELEMETRY=False \
-            chromadb/chroma:0.4.22
+            --entrypoint uvicorn \
+            chromadb/chroma:0.4.22 \
+            chromadb.app:app --host 0.0.0.0 --port 8000 --workers 1
           for _ in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/api/v1/heartbeat >/dev/null && exit 0
             sleep 2
