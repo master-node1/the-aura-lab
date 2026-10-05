@@ -20,7 +20,7 @@ A microservices backend for **AuraLab**, an emotionally aware AI companion with 
 |---|---|
 | [services/README.md](services/README.md) | **Start here.** System HLD, service index, shared database ER diagram, Redis contracts, end-to-end flows, configuration and known issues |
 | [services/DEPLOYMENT.md](services/DEPLOYMENT.md) | Docker Compose deployment and troubleshooting |
-| [docs/architecture/ci-cd.md](docs/architecture/ci-cd.md) | GitHub Actions CI/CD: tests, ECR images and Terraform deploys to EKS for changed services only |
+| [docs/architecture/ci-cd.md](docs/architecture/ci-cd.md) | GitHub Actions CI/CD: tests and Terraform plans for changed services; manual ECR build and EKS deploy |
 
 ### Per-service docs
 

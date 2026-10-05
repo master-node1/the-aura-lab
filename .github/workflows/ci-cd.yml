@@ -4,9 +4,10 @@
 # (see .github/scripts/detect-changed-services.sh).
 #
 #   pull_request -> main : unit + integration tests, terraform plan (dev)
-#   push         -> main : tests, docker build & push to ECR, plan + apply (dev)
+#   push         -> main : unit + integration tests, terraform plan (dev)
 #   workflow_dispatch    : plan | apply | destroy for a chosen environment and
-#                          service list (apply/destroy only from main)
+#                          service list (apply/destroy only from main); apply
+#                          also builds and pushes the images to ECR
 #
 # Full setup and operating guide: docs/architecture/ci-cd.md
 name: CI/CD
@@ -38,7 +39,7 @@ on:
         default: ""
 
 # PR runs supersede each other; runs on main are never cancelled, because each
-# one deploys only the services changed by its own commit.
+# one checks only the services changed by its own commit.
 concurrency:
   group: ci-cd-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -86,7 +87,7 @@ jobs:
         run: |
           case "$EVENT_NAME" in
             pull_request)      action=plan;  environment=dev; image_tag="$PR_HEAD_SHA" ;;
-            push)              action=apply; environment=dev; image_tag="$SHA" ;;
+            push)              action=plan;  environment=dev; image_tag="$SHA" ;;
             workflow_dispatch) action="$INPUT_ACTION"; environment="$INPUT_ENVIRONMENT"; image_tag="$SHA" ;;
             *) echo "::error::Unsupported event $EVENT_NAME"; exit 1 ;;
           esac

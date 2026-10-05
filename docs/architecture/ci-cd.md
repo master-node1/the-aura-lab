@@ -9,7 +9,7 @@ Terraform stack: [`infra/terraform/service/`](../../infra/terraform/service)
 | Trigger | Environment | Unit + integration tests | Docker build & push | Terraform |
 |---|---|---|---|---|
 | Pull request to `main` | `dev` | yes | no | `plan` (job summary). Skipped for fork PRs. |
-| Push to `main` | `dev` | yes | yes (ECR) | `plan`, then `apply` of that saved plan |
+| Push to `main` | `dev` | yes | no | `plan` (job summary) |
 | Manual run, `action=plan` | chosen | yes | no | `plan` |
 | Manual run, `action=apply` (from `main` only) | chosen | yes | yes | `plan`, then `apply` (gated by the GitHub Environment) |
 | Manual run, `action=destroy` (from `main` only) | chosen | no | no | `plan -destroy`, then `apply` (gated). Needs `confirm_destroy` set to the environment name and an explicit `services` list. |
@@ -129,13 +129,13 @@ Region comes from `aws_region` in the environment tfvars file. It is used for EC
 ## 6. Operations
 
 - **Redeploy a service without a code change:** run the workflow manually with `action=apply`, the environment, and `services=<name>`.
-- **A deploy failed on `main` and the next commit touches other services:** that commit won't retry the failed service. Re-run the failed job, or start a manual `apply` for it.
-- **Roll back:** revert the commit on `main`. The push redeploys the affected service from the reverted code.
+- **Deploy:** pushes to `main` only plan. To deploy, run the workflow manually with `action=apply`, the environment, and `services=<list|all>` (empty = services changed in the latest commit).
+- **Roll back:** revert the commit on `main`, then run a manual `apply` for the affected service.
 - **Tear down:** run manually with `action=destroy`, `services=<list|all>` and `confirm_destroy=<env>`. Only Kubernetes objects are destroyed. ECR images and state files are kept.
 
 ## 7. Known limitations
 
 - `.terraform.lock.hcl` isn't committed yet, so provider versions float within `~> 5.0` (aws) and `~> 2.30` (kubernetes). Commit one generated with `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`.
 - Only `auth-, identity-, customer-` and `authorization-service` have Jest unit tests. No service defines `test:integration` yet, so integration coverage is the container smoke test.
-- Deploys gate on the whole commit. If any selected service fails its tests, nothing from that push is built or deployed, including services that passed.
-- Promotion from `dev` to `staging` and `prod` is manual (workflow dispatch). It rebuilds the image for the current `main` SHA, or reuses it if that tag is already in ECR.
+- A manual `apply` gates on the whole run. If any selected service fails its tests, nothing is built or deployed, including services that passed.
+- Every deploy, including `dev`, is manual (workflow dispatch). It builds the image for the current `main` SHA, or reuses it if that tag is already in ECR.
