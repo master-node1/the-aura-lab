@@ -138,6 +138,8 @@ helm template auth-service infra/helm/aura-service --set image.repository=x/y,im
 | Read-only plan role (optional) | AWS | Secret `AWS_PLAN_ROLE_ARN`, used for PR plans. Falls back to `AWS_ROLE_ARN` |
 | GitHub Environments `dev`, `staging`, `prod` | repo settings | Add required reviewers to `staging` and `prod` to gate apply and destroy |
 
+Until `TF_STATE_BUCKET` is set, the pipeline skips every AWS job (build and push, Terraform plan, apply and destroy) and only runs the tests. Setting the variable turns them on. If `AWS_ROLE_ARN` is still missing then, the plan fails at its "Check AWS configuration" step with a message naming it.
+
 Region comes from `aws_region` in the environment tfvars file. It is used for ECR, the EKS API and the S3 backend.
 
 ## 6. Operations
