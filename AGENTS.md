@@ -9,8 +9,8 @@ Full detail: [`docs/ai/master-prompt.md`](docs/ai/master-prompt.md). This file i
 <!-- Fill these in per repository. Agents rely on this section heavily. -->
 
 - **Overview:** <one or two sentences on what this system does>
-- **Stack:** <language, framework, runtime versions, database, messaging>
-- **Architecture:** <e.g. layered monolith / microservices; link docs/HLD.md>
+- **Stack:** <TypeScript, NestJS, Node - v26, Post, KAFKA, postgres, chromadb, Redis, Socket.io>
+- **Architecture:** < microservices; link docs/HLD.md>
 - **Key directories:**
   - `src/` — <description>
   - `tests/` — <description>
@@ -19,27 +19,25 @@ Full detail: [`docs/ai/master-prompt.md`](docs/ai/master-prompt.md). This file i
 ### Commands
 ```bash
 # install
-<command>
+yarn install
 # run locally
-<command>
+yarn run dev
 # unit tests
-<command>
+yarn run test
 # integration tests
-<command>
+yarn run itest
 # lint
-<command>
+yarn run lint
 # type check
 <command>
 # build
-<command>
+yarn run build
 ```
 
 ### Conventions
 - <naming, folder layout, error-handling style, logging library, DI approach>
-- <branching / commit message format>
 - Kubernetes deployments always use the Helm chart in `infra/helm/aura-service`, installed by Terraform `helm_release` (`infra/terraform/service`). Never add raw manifests or `kubernetes_*` workload resources; extend the chart instead. See `docs/architecture/ci-cd.md`.
-
----
+- <branching / commit message format> follow conversation commits 
 
 ## How to Work
 
