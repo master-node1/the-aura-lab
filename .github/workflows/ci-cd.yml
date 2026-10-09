@@ -9,8 +9,9 @@
 #                          service list (apply/destroy only from main); apply
 #                          also builds and pushes the images to ECR
 #
-# The AWS jobs (build-push, terraform-plan, terraform-apply) are skipped until
-# the repository variable TF_STATE_BUCKET is set; tests always run.
+# The AWS jobs (build-push, terraform-plan, terraform-apply) are switched off
+# unless the repository variable ENABLE_AWS_DEPLOY is exactly 'true'; tests
+# always run.
 #
 # Full setup and operating guide: docs/architecture/ci-cd.md
 name: CI/CD
@@ -366,9 +367,9 @@ jobs:
   build-push:
     name: Build & push (${{ matrix.service }})
     needs: [changes, integration-tests]
-    # AWS jobs stay off until the repository variable TF_STATE_BUCKET is set
-    # (docs/architecture/ci-cd.md#5-one-time-setup).
-    if: vars.TF_STATE_BUCKET != '' && needs.changes.outputs.action == 'apply' && needs.changes.outputs.count != '0'
+    # AWS jobs stay off unless the repository variable ENABLE_AWS_DEPLOY is
+    # 'true' (docs/architecture/ci-cd.md#5-one-time-setup).
+    if: vars.ENABLE_AWS_DEPLOY == 'true' && needs.changes.outputs.action == 'apply' && needs.changes.outputs.count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -438,10 +439,10 @@ jobs:
     needs: [changes, build-push]
     # Deploy plans only run once every image was pushed. PR plans are
     # informational and skipped for forks, which get no AWS credentials.
-    # Skipped entirely until the repository variable TF_STATE_BUCKET is set.
+    # Skipped entirely unless the repository variable ENABLE_AWS_DEPLOY is 'true'.
     if: >-
       !cancelled() &&
-      vars.TF_STATE_BUCKET != '' &&
+      vars.ENABLE_AWS_DEPLOY == 'true' &&
       needs.changes.result == 'success' &&
       needs.changes.outputs.count != '0' &&
       (needs.changes.outputs.action != 'apply' || needs.build-push.result == 'success') &&

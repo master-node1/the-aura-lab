@@ -134,11 +134,12 @@ helm template auth-service infra/helm/aura-service --set image.repository=x/y,im
 | AWS Load Balancer Controller and metrics-server | each cluster | Gateway NLB and HPA metrics |
 | RDS Postgres, ElastiCache Redis, ChromaDB | AWS / cluster | Referenced from the `<service>-secrets` values and `CHROMA_HOST` |
 | S3 state bucket (versioned, encrypted) | AWS | Repository variable `TF_STATE_BUCKET` |
+| Switch for the AWS jobs | repo settings | Repository variable `ENABLE_AWS_DEPLOY` = `true`, set last |
 | IAM role trusted by GitHub OIDC | AWS | Secret `AWS_ROLE_ARN`. Needs ECR push/create, S3 state read/write and `eks:DescribeCluster`, and must be mapped to a Kubernetes RBAC identity (EKS access entry) that can manage Deployments, Services, HPAs, PDBs and Secrets (Helm stores release history as Secrets) in the namespace |
 | Read-only plan role (optional) | AWS | Secret `AWS_PLAN_ROLE_ARN`, used for PR plans. Falls back to `AWS_ROLE_ARN` |
 | GitHub Environments `dev`, `staging`, `prod` | repo settings | Add required reviewers to `staging` and `prod` to gate apply and destroy |
 
-Until `TF_STATE_BUCKET` is set, the pipeline skips every AWS job (build and push, Terraform plan, apply and destroy) and only runs the tests. Setting the variable turns them on. If `AWS_ROLE_ARN` is still missing then, the plan fails at its "Check AWS configuration" step with a message naming it.
+Every AWS job (build and push, Terraform plan, apply and destroy) is switched off until you set the repository variable `ENABLE_AWS_DEPLOY` to `true`; until then the pipeline only runs the tests. Turn it on only after the items above are in place. If `AWS_ROLE_ARN` or `TF_STATE_BUCKET` is still missing then, the plan fails at its "Check AWS configuration" step with a message naming it. Set the variable to anything else, or delete it, to switch the AWS jobs off again.
 
 Region comes from `aws_region` in the environment tfvars file. It is used for ECR, the EKS API and the S3 backend.
 
