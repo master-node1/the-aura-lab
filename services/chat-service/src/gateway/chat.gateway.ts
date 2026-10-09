@@ -117,7 +117,9 @@ export class ChatGateway
 
     // 4. Fetch user profile for AI (username + personality)
     // We query the users table that auth-service owns (shared DB)
-    const user = await (this.prisma as any).$queryRaw`
+    const user = await this.prisma.$queryRaw<
+      { username: string | null; personality_archetype: string | null }[]
+    >`
       SELECT username, personality_archetype FROM users WHERE id = ${userId}::uuid LIMIT 1
     `;
     const username = user?.[0]?.username ?? 'friend';
@@ -139,7 +141,7 @@ export class ChatGateway
     client.emit('pong', { ts: Date.now() });
   }
 
-  private sendToUser(userId: string, event: string, data: any) {
+  private sendToUser(userId: string, event: string, data: unknown) {
     const sockets = this.userSockets.get(userId);
     if (!sockets) return;
     for (const socketId of sockets) {
