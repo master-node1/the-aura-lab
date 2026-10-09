@@ -36,9 +36,8 @@ yarn run build
 
 ### Conventions
 - <naming, folder layout, error-handling style, logging library, DI approach>
+- Kubernetes deployments always use the Helm chart in `infra/helm/aura-service`, installed by Terraform `helm_release` (`infra/terraform/service`). Never add raw manifests or `kubernetes_*` workload resources; extend the chart instead. See `docs/architecture/ci-cd.md`.
 - <branching / commit message format> follow conversation commits 
-
----
 
 ## How to Work
 

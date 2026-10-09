@@ -20,6 +20,7 @@ A microservices backend for **AuraLab**, an emotionally aware AI companion with 
 |---|---|
 | [services/README.md](services/README.md) | **Start here.** System HLD, service index, shared database ER diagram, Redis contracts, end-to-end flows, configuration and known issues |
 | [services/DEPLOYMENT.md](services/DEPLOYMENT.md) | Docker Compose deployment and troubleshooting |
+| [docs/architecture/ci-cd.md](docs/architecture/ci-cd.md) | GitHub Actions CI/CD: tests and Terraform plans for changed services; manual ECR build and EKS deploy |
 
 ### Per-service docs
 
@@ -66,6 +67,9 @@ Each README covers HLD, LLD, API, DB schema, flows, configuration and limitation
 ├── .env.example              # root environment template (copy to .env)
 ├── services/                 # all microservices (see services/README.md)
 ├── docs/                     # product requirements, business rules, workflows
+├── infra/helm/aura-service/  # Helm chart used for every Kubernetes deployment
+├── infra/terraform/service/  # per-service EKS deployment stack (Terraform → Helm release)
+├── .github/                  # CI/CD workflow and change-detection script
 ├── .githooks/                # pre-commit / pre-push quality hooks
 ├── eslint.config.mjs         # ESLint config for all TypeScript services
 └── package.json              # root lint / quality scripts
