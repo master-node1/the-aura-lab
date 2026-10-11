@@ -1,12 +1,13 @@
 # The Aura Lab
 
-A microservices backend for **AuraLab**, an emotionally aware AI companion with real-time chat, long-term memory and selectable personalities, plus the first services (customer, identity, authorization) of an enterprise e-commerce platform.
+A microservices backend for **theauralab**, an AI-powered fashion and lifestyle e-commerce platform. It currently holds the account foundation: login (auth), identity verification, customer profiles and role-based authorization.
+
+The AI chat agent **AuraMind** (formerly Sora: chat, ai, memory, analytics and companion services) lives in its own repository, [master-node1/the-aura-mind](https://github.com/master-node1/the-aura-mind).
 
 | | |
 |---|---|
-| **Languages** | TypeScript (NestJS 10), Python 3.11 (FastAPI) |
-| **Data** | PostgreSQL 16 (Prisma 6), Redis 7, ChromaDB 0.4 |
-| **AI** | OpenAI through LangChain |
+| **Languages** | TypeScript (NestJS 10) |
+| **Data** | PostgreSQL 16 (Prisma 6), Redis 7 |
 | **Edge** | nginx API gateway on `:8001` |
 | **Runtime** | Docker Compose |
 
@@ -18,7 +19,7 @@ A microservices backend for **AuraLab**, an emotionally aware AI companion with 
 
 | Document | Contents |
 |---|---|
-| [services/README.md](services/README.md) | **Start here.** System HLD, service index, shared database ER diagram, Redis contracts, end-to-end flows, configuration and known issues |
+| [services/README.md](services/README.md) | **Start here.** System HLD, service index, shared database ER diagram, service-to-service calls, configuration and known issues |
 | [services/DEPLOYMENT.md](services/DEPLOYMENT.md) | Docker Compose deployment and troubleshooting |
 | [docs/architecture/ci-cd.md](docs/architecture/ci-cd.md) | GitHub Actions CI/CD: tests and Terraform plans for changed services; manual ECR build and EKS deploy |
 
@@ -29,16 +30,10 @@ Each README covers HLD, LLD, API, DB schema, flows, configuration and limitation
 | Domain | Service | README |
 |---|---|---|
 | Edge | api-gateway (nginx) | [services/api-gateway](services/api-gateway/README.md) |
-| Companion | auth-service | [services/auth-service](services/auth-service/README.md) |
-| Companion | chat-service | [services/chat-service](services/chat-service/README.md) |
-| Companion | memory-service | [services/memory-service](services/memory-service/README.md) |
-| Companion | companion-service | [services/companion-service](services/companion-service/README.md) |
-| Companion | analytics-service | [services/analytics-service](services/analytics-service/README.md) |
-| Companion | ai-service (Python) | [services/ai-service](services/ai-service/README.md) |
+| Accounts | auth-service | [services/auth-service](services/auth-service/README.md) |
 | E-commerce | customer-service | [services/customer-service](services/customer-service/README.md) |
 | E-commerce | identity-service | [services/identity-service](services/identity-service/README.md) |
 | E-commerce | authorization-service | [services/authorization-service](services/authorization-service/README.md) |
-| Library | shared types | [services/shared](services/shared/README.md) |
 
 ### Product and business requirements
 
@@ -63,7 +58,7 @@ Each README covers HLD, LLD, API, DB schema, flows, configuration and limitation
 
 ```text
 .
-├── docker-compose.yml        # full stack: postgres, redis, chromadb, 9 services + gateway
+├── docker-compose.yml        # full stack: postgres, redis, 4 services + gateway
 ├── .env.example              # root environment template (copy to .env)
 ├── services/                 # all microservices (see services/README.md)
 ├── docs/                     # product requirements, business rules, workflows
@@ -78,7 +73,7 @@ Each README covers HLD, LLD, API, DB schema, flows, configuration and limitation
 ## Quick start
 
 ```sh
-cp .env.example .env          # then set SECRET_KEY, INTERNAL_SERVICE_TOKEN and OPENAI_API_KEY
+cp .env.example .env          # then set SECRET_KEY and INTERNAL_SERVICE_TOKEN
 docker compose up -d --build
 curl http://localhost:8001/health
 
@@ -100,6 +95,5 @@ npm run hooks:install
 ```
 
 The pre-commit hook checks whitespace and lints staged TypeScript files. The
-pre-push hook runs ESLint across the TypeScript services and checks Python
-syntax in `services/ai-service`. Run the full checks manually with
+pre-push hook runs ESLint across the TypeScript services. Run the full checks manually with
 `npm run quality`. Run the unit tests with `npm test` (each tested service needs `npm install` first).
