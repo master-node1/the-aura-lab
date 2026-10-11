@@ -37,15 +37,13 @@ A service is any `services/<name>/` folder with a `Dockerfile`. Each one must ha
 | `infra/terraform/service/services/<name>.tfvars.json` | `<name>` |
 | `infra/terraform/service/*.tf`, `infra/terraform/service/environments/**`, `infra/helm/**` | all |
 | `.github/workflows/ci-cd.yml`, `.github/scripts/**` | all |
-| Anything else (`docs/`, `services/shared/`, …) | none |
+| Anything else (`docs/`, …) | none |
 
 The diff base is:
 
 - **Pull request:** the merge base of the PR and `main`.
 - **Push:** the previous tip of the branch (`github.event.before`). A new branch, or a base that no longer exists after a force push, selects all services.
 - **Manual run:** the `services` input (`all` or a comma-separated list). If it's empty, the services changed in the latest commit.
-
-`services/shared` isn't imported by any service yet (see [services/DEPLOYMENT.md](../../services/DEPLOYMENT.md)), so changing it doesn't select anything. Add it to `GLOBAL_PATTERNS` in the script once services depend on it.
 
 Run it locally:
 
@@ -61,12 +59,12 @@ REQUESTED="auth-service,api-gateway" .github/scripts/detect-changed-services.sh
 | Runtime | Steps |
 |---|---|
 | Node (NestJS) | `npm install`, `prisma generate` (if there's a schema), `npm run test --if-present -- --ci`, `npm run build` (type check) |
-| Python (`ai-service`) | `python -m compileall`, plus `pytest tests` when `tests/` exists |
+| Python (none today) | `python -m compileall`, plus `pytest tests` when `tests/` exists |
 | Static (`api-gateway`) | `nginx -t` against `nginx.conf`, using the Dockerfile's base image |
 
 ### Integration tests
 
-Each service image is built once with the GitHub Actions layer cache and started on the runner. It runs against real Postgres 16 and Redis 7 service containers, plus ChromaDB for `ai-service`. The job:
+Each service image is built once with the GitHub Actions layer cache and started on the runner. It runs against real Postgres 16 and Redis 7 service containers. The job:
 
 1. Starts the container. Sibling hostnames such as `identity-service` resolve to `127.0.0.1`, so a service, or the gateway, boots on its own.
 2. Waits up to 180 s for the service's health endpoint (`health_check_path`) to return 2xx. This exercises `prisma migrate deploy`, DB and Redis connectivity, and app startup.
@@ -106,7 +104,7 @@ The chart creates these objects, all named after the service so in-cluster DNS m
 | `HorizontalPodAutoscaler` (v2) | CPU based, between `min_replicas` and `max_replicas` |
 | `PodDisruptionBudget` | Only when `min_replicas > 1` |
 
-**Secrets are not managed by Terraform**, so they never reach state or plan output. Each pod loads the existing Kubernetes Secret `<service>-secrets` through `envFrom`. Create it with External Secrets Operator or Secrets Manager CSI, or by hand. It holds keys such as `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `INTERNAL_SERVICE_TOKEN` and `OPENAI_API_KEY`. If the secret is missing, pods fail with `CreateContainerConfigError` and the apply times out.
+**Secrets are not managed by Terraform**, so they never reach state or plan output. Each pod loads the existing Kubernetes Secret `<service>-secrets` through `envFrom`. Create it with External Secrets Operator or Secrets Manager CSI, or by hand. It holds keys such as `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET` and `INTERNAL_SERVICE_TOKEN`. If the secret is missing, pods fail with `CreateContainerConfigError` and the apply times out.
 
 ### Adding a service
 
@@ -132,7 +130,7 @@ helm template auth-service infra/helm/aura-service --set image.repository=x/y,im
 | EKS cluster per environment | AWS | Names in `environments/<env>.tfvars.json` (`the-aura-lab-<env>` placeholders) |
 | Namespace `the-aura-lab` | each cluster | Not created by the service stack, because services share it |
 | AWS Load Balancer Controller and metrics-server | each cluster | Gateway NLB and HPA metrics |
-| RDS Postgres, ElastiCache Redis, ChromaDB | AWS / cluster | Referenced from the `<service>-secrets` values and `CHROMA_HOST` |
+| RDS Postgres, ElastiCache Redis | AWS | Referenced from the `<service>-secrets` values |
 | S3 state bucket (versioned, encrypted) | AWS | Repository variable `TF_STATE_BUCKET` |
 | Switch for the AWS jobs | repo settings | Repository variable `ENABLE_AWS_DEPLOY` = `true`, set last |
 | IAM role trusted by GitHub OIDC | AWS | Secret `AWS_ROLE_ARN`. Needs ECR push/create, S3 state read/write and `eks:DescribeCluster`, and must be mapped to a Kubernetes RBAC identity (EKS access entry) that can manage Deployments, Services, HPAs, PDBs and Secrets (Helm stores release history as Secrets) in the namespace |

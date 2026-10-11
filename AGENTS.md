@@ -9,7 +9,7 @@ Full detail: [`docs/ai/master-prompt.md`](docs/ai/master-prompt.md). This file i
 <!-- Fill these in per repository. Agents rely on this section heavily. -->
 
 - **Overview:** <one or two sentences on what this system does>
-- **Stack:** <TypeScript, NestJS, Node - v26, Post, KAFKA, postgres, chromadb, Redis, Socket.io>
+- **Stack:** <TypeScript, NestJS, Node - v26, Post, KAFKA, postgres, Redis>
 - **Architecture:** < microservices; link docs/HLD.md>
 - **Key directories:**
   - `src/` — <description>

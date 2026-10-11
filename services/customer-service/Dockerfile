@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # customer-service — NestJS multi-stage build
-# Pattern matches auth/chat/memory/companion/analytics/identity/authorization.
+# Pattern matches auth/identity/authorization.
 # Customer-service has no src/ yet; this Dockerfile will succeed once code lands.
 # ─────────────────────────────────────────────────────────────────────────────
 

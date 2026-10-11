@@ -1,5 +1,7 @@
 # Ai Chat Agent
 
+> The chat agent is built as a separate product, **AuraMind**, in [master-node1/the-aura-mind](https://github.com/master-node1/the-aura-mind). theauralab consumes it through AuraMind's public API and a tool adapter; this page is for theauralab-side requirements only.
+
 ## Business Objective
 Describe why this module exists.
 

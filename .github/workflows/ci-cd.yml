@@ -285,23 +285,6 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
-      - name: Start ChromaDB
-        if: matrix.runtime == 'python'
-        run: |
-          # Bypass the image entrypoint: it force-reinstalls chroma-hnswlib at
-          # startup, which now pulls NumPy 2 and breaks chromadb 0.4.22
-          # ("np.float_ was removed"). Run the server on the image's pinned deps.
-          docker run -d --name chromadb -p 8000:8000 \
-            -e IS_PERSISTENT=FALSE -e ANONYMIZED_TELEMETRY=False \
-            --entrypoint uvicorn \
-            chromadb/chroma:0.4.22 \
-            chromadb.app:app --host 0.0.0.0 --port 8000 --workers 1
-          for _ in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:8000/api/v1/heartbeat >/dev/null && exit 0
-            sleep 2
-          done
-          echo "::error::ChromaDB did not become ready"; docker logs chromadb; exit 1
-
       - name: Start service container
         run: |
           # Resolve every sibling service name to localhost so services (and the
@@ -321,8 +304,6 @@ jobs:
             -e CORS_ORIGINS=http://localhost:3000 \
             -e IDENTITY_SERVICE_URL=http://identity-service:3001 \
             -e AUTHORIZATION_SERVICE_URL=http://authorization-service:3002 \
-            -e CHROMA_HOST=127.0.0.1 -e CHROMA_PORT=8000 \
-            -e MEMORY_SERVICE_URL=http://memory-service:3000 \
             "$IMAGE"
 
       - name: Smoke test (migrations + health endpoint)
@@ -357,11 +338,10 @@ jobs:
         if: failure()
         run: |
           docker logs app || true
-          docker logs chromadb 2>/dev/null || true
 
       - name: Clean up
         if: always()
-        run: docker rm -f app chromadb >/dev/null 2>&1 || true
+        run: docker rm -f app >/dev/null 2>&1 || true
 
   # ───────────────────────────────────────────────────────────────────────────
   build-push:
