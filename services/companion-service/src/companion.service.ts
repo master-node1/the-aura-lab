@@ -15,10 +15,12 @@ export class CompanionService {
   constructor(private prisma: PrismaService) {}
 
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      omit: { hashedPassword: true },
+    });
     if (!user) throw new NotFoundException('User not found');
-    const { hashedPassword, ...safe } = user as any;
-    return safe;
+    return user;
   }
 
   async updateProfile(userId: string, data: {
@@ -44,9 +46,11 @@ export class CompanionService {
       }),
     };
 
-    const updated = await this.prisma.user.update({ where: { id: userId }, data: updateData });
-    const { hashedPassword, ...safe } = updated as any;
-    return safe;
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      omit: { hashedPassword: true },
+    });
   }
 
   listArchetypes() {

@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { IsOptional, IsString, IsIn, IsObject } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
 import { CompanionService } from './companion.service';
+import type { AuthenticatedRequest } from './jwt.strategy';
 
 class UpdateProfileDto {
   @IsOptional() @IsString() username?: string;
@@ -21,12 +22,12 @@ export class CompanionController {
   }
 
   @Get('profile')
-  getProfile(@Request() req: any) {
+  getProfile(@Request() req: AuthenticatedRequest) {
     return this.companion.getProfile(req.user.sub);
   }
 
   @Patch('profile')
-  updateProfile(@Request() req: any, @Body() dto: UpdateProfileDto) {
+  updateProfile(@Request() req: AuthenticatedRequest, @Body() dto: UpdateProfileDto) {
     return this.companion.updateProfile(req.user.sub, dto);
   }
 
@@ -37,7 +38,7 @@ export class CompanionController {
 
   @Post('reset-memory')
   @HttpCode(HttpStatus.OK)
-  async resetMemory(@Request() req: any) {
+  async resetMemory(@Request() req: AuthenticatedRequest) {
     // Delegate to memory-service via HTTP
     await fetch(`${this.memoryServiceUrl}/api/memory/short-term`, {
       method: 'DELETE',

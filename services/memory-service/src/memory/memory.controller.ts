@@ -7,6 +7,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiParam } from '@nestj
 import { Response } from 'express';
 import { MemoryService } from './memory.service';
 import { CreateMemoryDto } from './dto/create-memory.dto';
+import type { AuthenticatedRequest } from './jwt.strategy';
 
 @ApiTags('memory')
 @ApiBearerAuth()
@@ -21,7 +22,7 @@ export class MemoryController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'memory_type', required: false, enum: ['short', 'long', 'semantic'] })
   list(
-    @Request() req: any,
+    @Request() req: AuthenticatedRequest,
     @Query('skip') skip = 0,
     @Query('limit') limit = 50,
     @Query('memory_type') memoryType?: string,
@@ -32,13 +33,13 @@ export class MemoryController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new long-term memory' })
-  create(@Request() req: any, @Body() dto: CreateMemoryDto) {
+  create(@Request() req: AuthenticatedRequest, @Body() dto: CreateMemoryDto) {
     return this.mem.create(req.user.sub, dto);
   }
 
   @Get('export/json')
   @ApiOperation({ summary: 'Export all memories as JSON file' })
-  async exportJson(@Request() req: any, @Res() res: Response) {
+  async exportJson(@Request() req: AuthenticatedRequest, @Res() res: Response) {
     const memories = await this.mem.exportAll(req.user.sub);
     const data = memories.map((m) => ({
       id: m.id, type: m.memoryType, content: m.content,
@@ -52,27 +53,27 @@ export class MemoryController {
   @Post('short-term')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Append a message to Redis short-term memory' })
-  saveShortTerm(@Request() req: any, @Body() body: { role: string; content: string }) {
+  saveShortTerm(@Request() req: AuthenticatedRequest, @Body() body: { role: string; content: string }) {
     return this.mem.saveShortTerm(req.user.sub, body);
   }
 
   @Get('short-term')
   @ApiOperation({ summary: 'Get all short-term (Redis) messages for current user' })
-  getShortTerm(@Request() req: any) {
+  getShortTerm(@Request() req: AuthenticatedRequest) {
     return this.mem.getShortTerm(req.user.sub);
   }
 
   @Delete('short-term')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Clear short-term (Redis) memory for current user' })
-  clearShortTerm(@Request() req: any) {
+  clearShortTerm(@Request() req: AuthenticatedRequest) {
     return this.mem.clearShortTerm(req.user.sub);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single memory by ID' })
   @ApiParam({ name: 'id', description: 'Memory UUID' })
-  async getOne(@Param('id') id: string, @Request() req: any) {
+  async getOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     const memory = await this.mem.findOne(id, req.user.sub);
     if (!memory) throw new NotFoundException('Memory not found');
     return memory;
@@ -81,7 +82,7 @@ export class MemoryController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update a memory' })
   @ApiParam({ name: 'id', description: 'Memory UUID' })
-  async update(@Param('id') id: string, @Request() req: any, @Body() dto: Partial<CreateMemoryDto>) {
+  async update(@Param('id') id: string, @Request() req: AuthenticatedRequest, @Body() dto: Partial<CreateMemoryDto>) {
     const memory = await this.mem.findOne(id, req.user.sub);
     if (!memory) throw new NotFoundException('Memory not found');
     return this.mem.update(id, req.user.sub, dto);
@@ -91,7 +92,7 @@ export class MemoryController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a memory' })
   @ApiParam({ name: 'id', description: 'Memory UUID' })
-  async remove(@Param('id') id: string, @Request() req: any) {
+  async remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     const deleted = await this.mem.remove(id, req.user.sub);
     if (!deleted) throw new NotFoundException('Memory not found');
   }

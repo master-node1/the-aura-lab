@@ -4,6 +4,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import type { AuthenticatedRequest } from './jwt.strategy';
 
 @ApiTags('auth')
 @Controller()
@@ -44,7 +45,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current authenticated user' })
   @ApiResponse({ status: 200, description: 'Current user profile' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  getMe(@Request() req: any) {
+  getMe(@Request() req: AuthenticatedRequest) {
     return this.auth.getMe(req.user.sub);
   }
 

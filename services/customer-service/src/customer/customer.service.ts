@@ -5,7 +5,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  AddressType,
   CustomerStatus,
   Prisma,
 } from '@prisma/client';
