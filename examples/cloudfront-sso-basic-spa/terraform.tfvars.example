@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and replace with real values from your test account.
+# Do not commit terraform.tfvars.
+
+bucket_name             = "ux-apps-portal-portal-example-dazn"
+domain_name             = "portal.example.dazn"
+acm_certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/11111111-2222-3333-4444-555555555555"
+entra_tenant_id         = "00000000-0000-0000-0000-000000000000"
+entra_client_id         = "11111111-1111-1111-1111-111111111111"
+entra_client_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:entra-client-secret-AbCdEf"
+
+# required_app_role    = "SiteAccess"
+# invalidate_on_upload = false

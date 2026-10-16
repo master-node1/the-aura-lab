@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SSO Test SPA</title>
+  <!-- Absolute paths so deep links like /about still load assets. No inline JS/CSS so a strict CSP works. -->
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header>
+    <span class="brand">SSO Test SPA</span>
+    <nav>
+      <a href="/" data-link>Home</a>
+      <a href="/about" data-link>About</a>
+      <a href="/diagnostics" data-link>Diagnostics</a>
+    </nav>
+  </header>
+  <main id="view">
+    <noscript>JavaScript is required for this test app.</noscript>
+  </main>
+  <footer>Served from S3 via CloudFront behind Entra ID SSO.</footer>
+</body>
+</html>
